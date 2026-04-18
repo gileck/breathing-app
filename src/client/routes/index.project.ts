@@ -15,20 +15,29 @@
  */
 
 import { Routes } from '../features/template/router';
-import { Home } from './project/Home';
 import { AIChat } from './project/AIChat';
 import { Todos } from './project/Todos';
 import { SingleTodo } from './project/SingleTodo';
 import { Dashboard } from './project/Dashboard';
 import { Debug } from './project/Debug';
+import { Library } from './project/Library';
+import { ExerciseEditor } from './project/ExerciseEditor';
+import { Session } from './project/Session';
+import { AudioSettings } from './project/AudioSettings';
 
 /**
  * Project route definitions.
  * These are merged with template routes in index.ts.
  */
 export const projectRoutes: Routes = {
-  // Example app routes (template demo):
-  '/': Home,
+  // Breathing app
+  '/': Library,
+  '/exercise/new': ExerciseEditor,
+  '/exercise/:id': ExerciseEditor,
+  '/session/:id': { component: Session, fullScreen: true },
+  '/audio': AudioSettings,
+
+  // Template demo routes (kept accessible via direct URL):
   '/ai-chat': AIChat,
   '/todos': Todos,
   '/todos/:todoId': SingleTodo,
@@ -36,8 +45,4 @@ export const projectRoutes: Routes = {
   // Admin routes
   '/admin/dashboard': Dashboard,
   '/admin/debug': Debug,
-
-  // Add more project-specific routes here:
-  // '/my-page': MyPage,
-  // '/share/:id': { component: SharePage, public: true },
 };

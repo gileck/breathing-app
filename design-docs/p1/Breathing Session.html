@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Breathing App — Mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<style>
+  :root {
+    --ink: oklch(0.96 0.005 80);
+    --ink-dim: oklch(0.75 0.01 80);
+    --ink-mute: oklch(0.55 0.01 80);
+    --ink-ghost: oklch(0.40 0.008 80);
+    --bg: oklch(0.18 0.008 60);
+    --bg-2: oklch(0.22 0.01 60);
+    --accent: oklch(0.78 0.09 230);
+    --accent-soft: oklch(0.78 0.09 230 / 0.18);
+  }
+  html, body {
+    margin: 0; padding: 0;
+    background: oklch(0.14 0.005 80);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  * { box-sizing: border-box; }
+
+  .page {
+    min-height: 100vh;
+    padding: 56px 40px 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+  }
+
+  .header {
+    max-width: 1600px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  h1 {
+    font-size: 38px;
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    margin: 0;
+    color: var(--ink);
+  }
+  .lede {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-dim);
+    max-width: 64ch;
+    text-wrap: pretty;
+  }
+
+  .canvas {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .device-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .device-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+
+  /* Tweaks panel */
+  .tweaks {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 260px;
+    background: oklch(0.20 0.008 80);
+    border: 1px solid oklch(0.30 0.008 80);
+    border-radius: 14px;
+    padding: 14px;
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+  }
+  .tweaks.on { display: flex; }
+  .tweaks-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin-bottom: 2px;
+  }
+  .tweak-row { display: flex; flex-direction: column; gap: 6px; }
+  .tweak-label {
+    font-size: 11px;
+    color: var(--ink-dim);
+    display: flex;
+    justify-content: space-between;
+  }
+  .tweak-label span:last-child {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink);
+  }
+  .seg {
+    display: flex;
+    background: oklch(0.14 0.005 80);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .seg button {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    padding: 6px 8px;
+    color: var(--ink-dim);
+    font-family: inherit;
+    font-size: 11px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .seg button.on {
+    background: oklch(0.28 0.008 80);
+    color: var(--ink);
+  }
+  input[type=range] {
+    width: 100%;
+    accent-color: oklch(0.78 0.09 230);
+  }
+</style>
+
+<template id="__bundler_thumbnail" data-bg-color="#1e1916">
+  <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+    <rect width="400" height="400" fill="#1e1916"/>
+    <circle cx="200" cy="200" r="90" fill="none" stroke="#3a6080" stroke-width="1" opacity="0.5"/>
+    <circle cx="200" cy="200" r="58" fill="#2a5a8a" opacity="0.6"/>
+    <text x="200" y="218" text-anchor="middle" font-family="sans-serif" font-size="52" font-weight="200" fill="white" opacity="0.9">4</text>
+  </svg>
+</template>
+</head>
+<body>
+
+<div id="root"></div>
+
+<div id="tweaks" class="tweaks">
+  <div class="tweaks-title">Tweaks</div>
+  <div class="tweak-row">
+    <div class="tweak-label"><span>Shape style</span><span id="shapeVal">orb</span></div>
+    <div class="seg" id="shapeSeg">
+      <button data-v="orb" class="on">Orb</button>
+      <button data-v="ring">Ring</button>
+      <button data-v="wave">Wave</button>
+    </div>
+  </div>
+  <div class="tweak-row">
+    <div class="tweak-label"><span>Phase</span><span id="phaseVal">inhale</span></div>
+    <div class="seg" id="phaseSeg">
+      <button data-v="inhale" class="on">In</button>
+      <button data-v="holdIn">Hold</button>
+      <button data-v="exhale">Out</button>
+      <button data-v="holdOut">Hold</button>
+    </div>
+  </div>
+  <div class="tweak-row">
+    <div class="tweak-label"><span>Tempo</span><span id="tempoVal">1.00×</span></div>
+    <input type="range" id="tempoRange" min="0.6" max="1.4" step="0.05" value="1" />
+  </div>
+  <div class="tweak-row">
+    <div class="tweak-label"><span>Tuner visible</span><span id="tunerVal">on</span></div>
+    <div class="seg" id="tunerSeg">
+      <button data-v="on" class="on">On</button>
+      <button data-v="off">Off</button>
+    </div>
+  </div>
+  <div class="tweak-row">
+    <div class="tweak-label"><span>Per-phase nudge</span><span id="nudgeVal">hidden</span></div>
+    <div class="seg" id="nudgeSeg">
+      <button data-v="hidden" class="on">Hidden</button>
+      <button data-v="shown">Shown</button>
+    </div>
+  </div>
+</div>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="app.jsx"></script>
+
+</body>
+</html>
