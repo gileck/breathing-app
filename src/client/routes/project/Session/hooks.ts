@@ -14,6 +14,7 @@ import type { Exercise } from '@/client/features/project/exercises';
 import {
     ensureAudio,
     playPhaseCue,
+    preloadSampleForStyle,
     setMasterVolume,
     useAudioSettingsStore,
 } from '@/client/features/project/breathing-audio';
@@ -99,10 +100,13 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
     useEffect(() => {
         if (hasCuedInitialPhaseRef.current) return;
         hasCuedInitialPhaseRef.current = true;
-        void ensureAudio().then((ok) => {
+        void ensureAudio().then(async (ok) => {
             if (!ok) return;
             const audio = useAudioSettingsStore.getState();
             setMasterVolume(audio.volume);
+            // Warm the buffer before the first phase fires, so sample styles
+            // don't miss their opening cue and fall back to tones.
+            await preloadSampleForStyle(audio.style);
             const phase = stateRef.current.phase;
             if (
                 audio.enabled

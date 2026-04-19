@@ -1,5 +1,6 @@
 import type { Phase } from '@/client/features/project/exercises';
 import type { AudioCueStyle } from './types';
+import { loadSample, playSample, type SampleId } from './samples';
 
 type WebkitWindow = Window & {
     webkitAudioContext?: typeof AudioContext;
@@ -241,9 +242,30 @@ function playClick(audioCtx: AudioContext, bus: GainNode, phase: Phase): void {
 // ─────────────────────────────────────────────────────────────
 // Dispatch
 // ─────────────────────────────────────────────────────────────
+const STYLE_TO_SAMPLE: Partial<Record<AudioCueStyle, SampleId>> = {
+    gong: 'gong',
+    bowl: 'bowl',
+};
+
+export const preloadSampleForStyle = async (style: AudioCueStyle): Promise<void> => {
+    const sampleId = STYLE_TO_SAMPLE[style];
+    if (!sampleId || !ctx) return;
+    await loadSample(ctx, sampleId);
+};
+
 export const playPhaseCue = (phase: Phase, style: AudioCueStyle = 'tones'): void => {
     if (!ctx || !masterGain || ctx.state !== 'running') return;
     if (style === 'silent') return;
+
+    const sampleId = STYLE_TO_SAMPLE[style];
+    if (sampleId) {
+        const started = playSample(ctx, masterGain, sampleId, phase);
+        // Sample wasn't loaded yet; fall back to the tones style so the user
+        // still hears something while the buffer warms up in the background.
+        if (!started) playTones(ctx, masterGain, phase);
+        return;
+    }
+
     switch (style) {
         case 'tones':
             playTones(ctx, masterGain, phase);

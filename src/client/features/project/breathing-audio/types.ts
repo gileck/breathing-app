@@ -1,12 +1,23 @@
 import type { Phase } from '@/client/features/project/exercises';
 
-export type AudioCueStyle = 'tones' | 'chime' | 'pulse' | 'click' | 'silent';
+export type AudioCueStyle =
+    | 'tones'
+    | 'chime'
+    | 'pulse'
+    | 'click'
+    | 'gong'
+    | 'bowl'
+    | 'silent';
 
-export const AUDIO_CUE_STYLES: Array<{
+export type AudioCueStyleMeta = {
     value: AudioCueStyle;
     label: string;
     description: string;
-}> = [
+    /** Recorded samples are loaded lazily and can be missing on a fresh clone. */
+    sample?: 'gong' | 'bowl';
+};
+
+export const AUDIO_CUE_STYLES: AudioCueStyleMeta[] = [
     {
         value: 'tones',
         label: 'Tones',
@@ -26,6 +37,18 @@ export const AUDIO_CUE_STYLES: Array<{
         value: 'click',
         label: 'Click',
         description: 'Short percussive click at each phase transition.',
+    },
+    {
+        value: 'gong',
+        label: 'Gong',
+        description: 'Resonant metal gong with a long decay. Recorded sample.',
+        sample: 'gong',
+    },
+    {
+        value: 'bowl',
+        label: 'Singing bowl',
+        description: 'Warm Tibetan-bowl hum. Recorded sample.',
+        sample: 'bowl',
     },
     {
         value: 'silent',

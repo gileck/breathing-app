@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Play } from 'lucide-react';
 import { Button } from '@/client/components/template/ui/button';
 import { Switch } from '@/client/components/template/ui/switch';
@@ -7,10 +8,13 @@ import { PHASES, type Phase } from '@/client/features/project/exercises';
 import {
     AUDIO_CUE_STYLES,
     ensureAudio,
+    getSampleStatus,
     playPhaseCue,
+    preloadSampleForStyle,
     setMasterVolume,
     useAudioSettingsStore,
     type AudioCueStyle,
+    type SampleId,
 } from '@/client/features/project/breathing-audio';
 
 const PHASE_META: Record<Phase, { label: string; description: string }> = {
@@ -37,20 +41,42 @@ export function AudioSettings() {
         setMasterVolume(value);
     };
 
-    const handleTest = (phase: Phase, overrideStyle?: AudioCueStyle) => {
-        void ensureAudio().then((ok) => {
+    // Track sample load state so we can show "missing" / "loaded" badges and
+    // keep the UI responsive after a picked style finishes downloading.
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral UI state derived from async loader
+    const [sampleTick, setSampleTick] = useState(0);
+    const sampleStatusFor = (id: SampleId) => {
+        void sampleTick;
+        return getSampleStatus(id);
+    };
+
+    useEffect(() => {
+        void ensureAudio().then(async (ok) => {
             if (!ok) return;
-            const current = useAudioSettingsStore.getState();
-            setMasterVolume(current.volume);
-            const effectiveStyle = overrideStyle ?? current.style;
-            if (effectiveStyle === 'silent') return;
-            playPhaseCue(phase, effectiveStyle);
+            // Pre-warm samples so the picker accurately reflects availability.
+            await Promise.all([
+                preloadSampleForStyle('gong'),
+                preloadSampleForStyle('bowl'),
+            ]);
+            setSampleTick((n) => n + 1);
         });
+    }, []);
+
+    const handleTest = async (phase: Phase, overrideStyle?: AudioCueStyle) => {
+        const ok = await ensureAudio();
+        if (!ok) return;
+        const current = useAudioSettingsStore.getState();
+        setMasterVolume(current.volume);
+        const effectiveStyle = overrideStyle ?? current.style;
+        if (effectiveStyle === 'silent') return;
+        await preloadSampleForStyle(effectiveStyle);
+        setSampleTick((n) => n + 1);
+        playPhaseCue(phase, effectiveStyle);
     };
 
     const handleStyleChange = (next: AudioCueStyle) => {
         setStyle(next);
-        handleTest('inhale', next);
+        void handleTest('inhale', next);
     };
 
     return (
@@ -97,6 +123,10 @@ export function AudioSettings() {
                 <ul className="mt-3 flex flex-col gap-2">
                     {AUDIO_CUE_STYLES.map((option) => {
                         const active = option.value === style;
+                        const sampleStatus = option.sample
+                            ? sampleStatusFor(option.sample)
+                            : null;
+                        const sampleMissing = sampleStatus === 'missing';
                         return (
                             <li key={option.value}>
                                 <button
@@ -111,11 +141,25 @@ export function AudioSettings() {
                                     }`}
                                 >
                                     <div className="flex-1">
-                                        <div className="text-sm font-medium">
-                                            {option.label}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium">
+                                                {option.label}
+                                            </span>
+                                            {sampleStatus === 'loading' && (
+                                                <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                                                    loading…
+                                                </span>
+                                            )}
+                                            {sampleMissing && (
+                                                <span className="font-mono text-[10px] uppercase tracking-wider text-destructive">
+                                                    missing
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="text-xs text-muted-foreground">
-                                            {option.description}
+                                            {sampleMissing
+                                                ? 'Sample file not found in public/audio. Falls back to Tones.'
+                                                : option.description}
                                         </div>
                                     </div>
                                     <div
