@@ -4,5 +4,7 @@
   "templateLocalPath": "../app-template-ai",
   "lastSyncCommit": "1dfba1a20a7dc11cf29e806d863b28aabb313efb",
   "lastSyncDate": "2026-04-19T07:30:33.932Z",
-  "projectOverrides": []
+  "projectOverrides": [
+    "src/config/pwa.config.ts"
+  ]
 }

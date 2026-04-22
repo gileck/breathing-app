@@ -1,7 +1,7 @@
 {
-  "name": "App Template AI",
-  "short_name": "App Template",
-  "description": "A custom SPA application with PWA capabilities",
+  "name": "Breathing",
+  "short_name": "Breathing",
+  "description": "Guided breathing sessions and pattern library",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

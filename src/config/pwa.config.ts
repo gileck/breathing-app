@@ -8,9 +8,9 @@
 
 export const pwaConfig = {
   // App identity
-  applicationName: "App Template AI",
-  appleWebAppTitle: "App Template",
-  description: "A custom SPA application with PWA capabilities",
+  applicationName: "Breathing",
+  appleWebAppTitle: "Breathing",
+  description: "Guided breathing sessions and pattern library",
 
   // Theme
   themeColor: "#000000",
