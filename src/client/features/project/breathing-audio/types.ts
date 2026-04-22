@@ -64,6 +64,8 @@ export type AudioSettings = {
     volume: number;
     style: AudioCueStyle;
     cues: PhaseCues;
+    /** Spoken "inhale" / "hold" / "exhale" cues layered on top of the style. */
+    voice: boolean;
 };
 
 export const DEFAULT_PHASE_CUES: PhaseCues = {

@@ -1,6 +1,16 @@
 import type { Phase } from '@/client/features/project/exercises';
 import type { AudioCueStyle } from './types';
-import { loadSample, playSample, type SampleId } from './samples';
+import {
+    getSampleBuffer,
+    loadSample,
+    playSample,
+    voiceSampleForPhase,
+    VOICE_SAMPLE_IDS,
+    type SampleId,
+} from './samples';
+
+const STARTING_SAMPLE_ID: SampleId = 'voice-starting';
+const MEDITATION_SAMPLE_ID: SampleId = 'voice-meditation';
 
 type WebkitWindow = Window & {
     webkitAudioContext?: typeof AudioContext;
@@ -253,16 +263,55 @@ export const preloadSampleForStyle = async (style: AudioCueStyle): Promise<void>
     await loadSample(ctx, sampleId);
 };
 
+export const preloadVoiceSamples = async (): Promise<void> => {
+    if (!ctx) return;
+    await Promise.all(VOICE_SAMPLE_IDS.map((id) => loadSample(ctx as AudioContext, id)));
+};
+
+export const playVoiceCue = (phase: Phase): void => {
+    if (!ctx || !masterGain || ctx.state !== 'running') return;
+    const sampleId = voiceSampleForPhase(phase);
+    playSample(ctx, masterGain, sampleId, phase);
+};
+
+export const preloadStartingCue = async (): Promise<number> => {
+    if (!ctx) return 0;
+    const buffer = await loadSample(ctx, STARTING_SAMPLE_ID);
+    return buffer?.duration ?? 0;
+};
+
+export const playStartingCue = (): void => {
+    if (!ctx || !masterGain || ctx.state !== 'running') return;
+    playSample(ctx, masterGain, STARTING_SAMPLE_ID, 'inhale');
+};
+
+export const getStartingCueDuration = (): number =>
+    getSampleBuffer(STARTING_SAMPLE_ID)?.duration ?? 0;
+
+export const preloadMeditation = async (): Promise<number> => {
+    if (!ctx) return 0;
+    const buffer = await loadSample(ctx, MEDITATION_SAMPLE_ID);
+    return buffer?.duration ?? 0;
+};
+
+export const playMeditation = (): void => {
+    if (!ctx || !masterGain || ctx.state !== 'running') return;
+    playSample(ctx, masterGain, MEDITATION_SAMPLE_ID, 'inhale');
+};
+
+export const getMeditationDuration = (): number =>
+    getSampleBuffer(MEDITATION_SAMPLE_ID)?.duration ?? 0;
+
 export const playPhaseCue = (phase: Phase, style: AudioCueStyle = 'tones'): void => {
     if (!ctx || !masterGain || ctx.state !== 'running') return;
     if (style === 'silent') return;
 
     const sampleId = STYLE_TO_SAMPLE[style];
     if (sampleId) {
-        const started = playSample(ctx, masterGain, sampleId, phase);
-        // Sample wasn't loaded yet; fall back to the tones style so the user
-        // still hears something while the buffer warms up in the background.
-        if (!started) playTones(ctx, masterGain, phase);
+        // If the sample isn't loaded (missing file or still decoding), play
+        // nothing. The /audio UI surfaces a "missing" badge so the user
+        // knows why — surprise-tones would be worse than silence.
+        playSample(ctx, masterGain, sampleId, phase);
         return;
     }
 

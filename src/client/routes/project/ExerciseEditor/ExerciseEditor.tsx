@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Play, Trash2, Star } from 'lucide-react';
 import { Button } from '@/client/components/template/ui/button';
 import { ConfirmDialog } from '@/client/components/template/ui/confirm-dialog';
+import { Switch } from '@/client/components/template/ui/switch';
+import { Label } from '@/client/components/template/ui/label';
 import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
@@ -24,6 +26,7 @@ const DEFAULT_DRAFT: EditorDraft = {
     pace: 1,
     length: { kind: 'minutes', value: 5 },
     favorite: false,
+    meditation: false,
 };
 
 const PHASE_ROWS: Array<{ phase: Phase; label: string }> = [
@@ -47,6 +50,7 @@ export function ExerciseEditor() {
     const setPhaseValue = useEditorStore((s) => s.setPhaseValue);
     const setPace = useEditorStore((s) => s.setPace);
     const setFavorite = useEditorStore((s) => s.setFavorite);
+    const setMeditation = useEditorStore((s) => s.setMeditation);
     const clearDraft = useEditorStore((s) => s.clearDraft);
 
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral dialog state
@@ -63,6 +67,7 @@ export function ExerciseEditor() {
                 pace: existing.pace,
                 length: existing.length,
                 favorite: existing.favorite,
+                meditation: existing.meditation ?? false,
             });
         } else if (!editingId) {
             setDraft({ ...DEFAULT_DRAFT });
@@ -98,6 +103,7 @@ export function ExerciseEditor() {
                 pace: draft.pace,
                 length: draft.length,
                 favorite: draft.favorite,
+                meditation: draft.meditation,
             });
         } else {
             addExercise({
@@ -106,6 +112,7 @@ export function ExerciseEditor() {
                 pace: draft.pace,
                 length: draft.length,
                 favorite: draft.favorite,
+                meditation: draft.meditation,
             });
         }
         setSaveOpen(false);
@@ -126,6 +133,7 @@ export function ExerciseEditor() {
             pace: draft.pace,
             length: draft.length,
             favorite: draft.favorite,
+            meditation: draft.meditation,
         });
         navigate(`/session/${created.id}`);
     };
@@ -234,6 +242,24 @@ export function ExerciseEditor() {
                     <span>0.5×</span>
                     <span>1×</span>
                     <span>2×</span>
+                </div>
+            </div>
+
+            <div className="mb-8 rounded-2xl border bg-card p-4">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <Label htmlFor="exercise-meditation" className="text-base font-medium">
+                            Start with meditation
+                        </Label>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Play a short guided intro to settle in before the breathing pattern begins.
+                        </p>
+                    </div>
+                    <Switch
+                        id="exercise-meditation"
+                        checked={draft.meditation ?? false}
+                        onCheckedChange={setMeditation}
+                    />
                 </div>
             </div>
 

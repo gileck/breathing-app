@@ -15,6 +15,7 @@ import {
   BatchSyncAlert,
   useOfflineSyncInitializer
 } from '@/client/features';
+import { BackgroundMusicPlayer } from '@/client/features/project/background-music';
 import { initializeApiClient } from '@/client/utils/apiClient';
 import { useAllPersistedStoresHydrated } from '@/client/stores';
 import { markEvent, BOOT_PHASES } from '@/client/features';
@@ -44,6 +45,7 @@ export default function App({ Component: _Component, pageProps: _pageProps }: Ap
               )}
             </RouterProvider>
             <BatchSyncAlert />
+            <BackgroundMusicPlayer />
           </AppThemeProvider>
         </BootGate>
       </QueryProvider>

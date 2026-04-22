@@ -29,6 +29,8 @@ export type Exercise = {
     pace: number;
     length: SessionLength;
     favorite: boolean;
+    /** If true, a short meditation voice-over plays before the countdown. */
+    meditation?: boolean;
     lastUsedAt?: string;
     createdAt: string;
     updatedAt: string;

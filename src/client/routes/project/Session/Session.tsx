@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { useRouter } from '@/client/features';
 import {
@@ -13,7 +13,21 @@ import {
     shapeScaleForPhase,
     hasPendingChanges,
 } from '@/client/features/project/breath-engine';
-import { useAudioSettingsStore } from '@/client/features/project/breathing-audio';
+import {
+    ensureAudio,
+    getMeditationDuration,
+    getStartingCueDuration,
+    playMeditation,
+    playStartingCue,
+    preloadMeditation,
+    preloadSampleForStyle,
+    preloadStartingCue,
+    preloadVoiceSamples,
+    setMasterVolume,
+    stopAllSamples,
+    useAudioSettingsStore,
+} from '@/client/features/project/breathing-audio';
+import { useBackgroundMusicRuntimeStore } from '@/client/features/project/background-music';
 import { BreathOrb } from './components/BreathOrb';
 import { PhaseChips } from './components/PhaseChips';
 import { TempoButtons } from './components/TempoButtons';
@@ -65,10 +79,108 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     // exercise is guaranteed non-null here (checked in parent) but TS doesn't know.
     const safeExercise = exercise!;
     const engine = useBreathSession(safeExercise);
-    const { state, togglePause, stop, setPendingPace, nudgePhase, isComplete } = engine;
+    const {
+        state,
+        beginSession,
+        togglePause,
+        stop,
+        setPendingPace,
+        nudgePhase,
+        isComplete,
+        isIdle,
+    } = engine;
 
     const audioEnabled = useAudioSettingsStore((s) => s.enabled);
     const toggleAudio = useAudioSettingsStore((s) => s.toggleEnabled);
+    const setBgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.setShouldPlay);
+
+    // 3 → 2 → 1, advances through timers bound to the audio cue's real duration.
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral pre-session countdown driven by setTimeout
+    const [countdownDigit, setCountdownDigit] = useState(3);
+    // Tracks which pre-session step we're showing while the engine stays idle.
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral pre-session sequencing driven by setTimeout
+    const [preStartStep, setPreStartStep] = useState<'meditation' | 'countdown'>(
+        safeExercise.meditation ? 'meditation' : 'countdown',
+    );
+
+    useEffect(() => {
+        setBgShouldPlay(true);
+        return () => setBgShouldPlay(false);
+    }, [setBgShouldPlay]);
+
+    // Cut off any in-flight sample playback (long meditation/starting cues
+    // most importantly) when the user bails out of the session.
+    useEffect(() => {
+        return () => stopAllSamples();
+    }, []);
+
+    // Pre-session sequence: optional meditation → 3/2/1 countdown → engine starts.
+    // Driven by real sample durations when available, with sensible fallbacks.
+    const preSessionStartedRef = useRef(false);
+    useEffect(() => {
+        if (!isIdle) return;
+        if (preSessionStartedRef.current) return;
+        preSessionStartedRef.current = true;
+        const timers: ReturnType<typeof setTimeout>[] = [];
+        let cancelled = false;
+        const fallbackCountdownMs = 3000;
+        const fallbackMeditationMs = 15000;
+        const withMeditation = Boolean(safeExercise.meditation);
+
+        const runCountdown = (audioEnabled: boolean) => {
+            setPreStartStep('countdown');
+            setCountdownDigit(3);
+            let durationMs = fallbackCountdownMs;
+            const warm = getStartingCueDuration();
+            if (warm > 0) durationMs = warm * 1000;
+            if (audioEnabled) playStartingCue();
+
+            const third = durationMs / 3;
+            timers.push(setTimeout(() => setCountdownDigit(2), third));
+            timers.push(setTimeout(() => setCountdownDigit(1), third * 2));
+            timers.push(setTimeout(() => beginSession(), durationMs));
+        };
+
+        const run = async () => {
+            const ok = await ensureAudio();
+            const audio = useAudioSettingsStore.getState();
+            const audioEnabled = ok && audio.enabled;
+
+            if (ok) {
+                setMasterVolume(audio.volume);
+                // Warm phase-cue buffers while the pre-session is running so
+                // the very first phase cue lands clean.
+                void preloadSampleForStyle(audio.style);
+                if (audio.voice) void preloadVoiceSamples();
+                // Kick off both warmups in parallel so the countdown is ready
+                // immediately after meditation ends.
+                await Promise.all([
+                    withMeditation ? preloadMeditation() : Promise.resolve(0),
+                    preloadStartingCue(),
+                ]);
+            }
+            if (cancelled) return;
+
+            if (withMeditation) {
+                let meditationMs = fallbackMeditationMs;
+                const warm = getMeditationDuration();
+                if (warm > 0) meditationMs = warm * 1000;
+                if (audioEnabled) playMeditation();
+                timers.push(setTimeout(() => {
+                    if (cancelled) return;
+                    runCountdown(audioEnabled);
+                }, meditationMs));
+            } else {
+                runCountdown(audioEnabled);
+            }
+        };
+
+        void run();
+        return () => {
+            cancelled = true;
+            timers.forEach(clearTimeout);
+        };
+    }, [isIdle, beginSession, safeExercise.meditation]);
 
     useEffect(() => {
         if (isComplete) navigate('/');
@@ -85,6 +197,54 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const pending = hasPendingChanges(state);
     const targetCycles =
         safeExercise.length.kind === 'cycles' ? safeExercise.length.value : null;
+
+    if (isIdle) {
+        const isMeditation = preStartStep === 'meditation';
+        return (
+            <div className="dark breath-session-surface relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 text-center">
+                {isMeditation ? (
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="breath-halo h-40 w-40 rounded-full" style={{ animation: 'breath-pulse 3s ease-in-out infinite' }} aria-hidden />
+                        <div className="flex flex-col items-center gap-2">
+                            <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-primary/80">
+                                Settling in
+                            </span>
+                            <span className="text-lg font-light text-foreground/85">
+                                Take a moment. The exercise begins shortly.
+                            </span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col items-center gap-3">
+                        <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                            Starting in
+                        </span>
+                        <span
+                            key={countdownDigit}
+                            aria-live="polite"
+                            className="font-light tabular-nums text-foreground"
+                            style={{
+                                fontSize: 160,
+                                letterSpacing: '-0.04em',
+                                textShadow: '0 2px 40px hsl(var(--primary) / 0.4)',
+                                animation: 'countdown-pulse 700ms ease-out',
+                            }}
+                        >
+                            {countdownDigit}
+                        </span>
+                    </div>
+                )}
+                <button
+                    type="button"
+                    onClick={stop}
+                    aria-label="Cancel session"
+                    className="absolute right-5 top-6 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
+                >
+                    <X className="h-5 w-5" aria-hidden />
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="dark breath-session-surface relative flex min-h-screen flex-col overflow-hidden">

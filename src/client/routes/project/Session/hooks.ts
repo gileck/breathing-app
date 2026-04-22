@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     advance,
     complete,
@@ -12,20 +12,21 @@ import {
 } from '@/client/features/project/breath-engine';
 import type { Exercise } from '@/client/features/project/exercises';
 import {
-    ensureAudio,
     playPhaseCue,
-    preloadSampleForStyle,
+    playVoiceCue,
     setMasterVolume,
     useAudioSettingsStore,
 } from '@/client/features/project/breathing-audio';
 
 export type EngineHandle = {
     state: EngineState;
+    beginSession: () => void;
     togglePause: () => void;
     stop: () => void;
     setPendingPace: (pace: number) => void;
     nudgePhase: (delta: number) => void;
     isComplete: boolean;
+    isIdle: boolean;
 };
 
 const sessionTargetMs = (exercise: Exercise): number | null => {
@@ -41,38 +42,37 @@ const sessionTargetCycles = (exercise: Exercise): number | null => {
 export function useBreathSession(exercise: Exercise): EngineHandle {
     // eslint-disable-next-line state-management/prefer-state-architecture -- per-session engine state is ephemeral to this route instance
     const [state, setState] = useState<EngineState>(() =>
-        start(createInitialState(exercise.pattern, exercise.pace)),
+        createInitialState(exercise.pattern, exercise.pace),
     );
     const stateRef = useRef(state);
     stateRef.current = state;
 
     const rafRef = useRef<number | null>(null);
     const lastTickRef = useRef<number | null>(null);
-    const hasCuedInitialPhaseRef = useRef(false);
 
+    // rAF only spins while the engine is actively advancing. While idle
+    // (pre-session meditation + countdown) or paused / complete we let the
+    // browser sleep — otherwise ~30 s of idle time burns ~1,800 no-op frames.
     useEffect(() => {
+        if (state.status !== 'running') return;
+
         const tick = (now: number) => {
             const last = lastTickRef.current ?? now;
             const delta = now - last;
             lastTickRef.current = now;
 
             const current = stateRef.current;
-            if (current.status !== 'running') {
-                rafRef.current = requestAnimationFrame(tick);
-                return;
-            }
-
             const result = advance(current, delta);
             let nextState = result.state;
 
             if (result.phaseChanged) {
                 const audio = useAudioSettingsStore.getState();
-                if (
-                    audio.enabled
-                    && audio.style !== 'silent'
-                    && audio.cues[nextState.phase]
-                ) {
-                    playPhaseCue(nextState.phase, audio.style);
+                if (audio.enabled && audio.cues[nextState.phase]) {
+                    if (audio.voice) {
+                        playVoiceCue(nextState.phase);
+                    } else if (audio.style !== 'silent') {
+                        playPhaseCue(nextState.phase, audio.style);
+                    }
                 }
             }
 
@@ -92,31 +92,11 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
         return () => {
             if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
             rafRef.current = null;
+            // Reset so a subsequent resume doesn't attribute the pause gap
+            // to the first frame's delta.
             lastTickRef.current = null;
         };
-    }, [exercise]);
-
-    // Cue the very first phase so the session opens with sound, not silence.
-    useEffect(() => {
-        if (hasCuedInitialPhaseRef.current) return;
-        hasCuedInitialPhaseRef.current = true;
-        void ensureAudio().then(async (ok) => {
-            if (!ok) return;
-            const audio = useAudioSettingsStore.getState();
-            setMasterVolume(audio.volume);
-            // Warm the buffer before the first phase fires, so sample styles
-            // don't miss their opening cue and fall back to tones.
-            await preloadSampleForStyle(audio.style);
-            const phase = stateRef.current.phase;
-            if (
-                audio.enabled
-                && audio.style !== 'silent'
-                && audio.cues[phase]
-            ) {
-                playPhaseCue(phase, audio.style);
-            }
-        });
-    }, []);
+    }, [exercise, state.status]);
 
     // Keep the master gain in sync with the persisted volume setting,
     // even if the user changes it in another tab or mid-session.
@@ -128,29 +108,42 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
         );
     }, []);
 
-    const togglePause = () => {
+    const beginSession = useCallback(() => {
+        const current = stateRef.current;
+        if (current.status !== 'idle') return;
+        const audio = useAudioSettingsStore.getState();
+        if (audio.enabled && audio.cues[current.phase]) {
+            if (audio.voice) playVoiceCue(current.phase);
+            else if (audio.style !== 'silent') playPhaseCue(current.phase, audio.style);
+        }
+        setState((prev) => (prev.status === 'idle' ? start(prev) : prev));
+    }, []);
+
+    const togglePause = useCallback(() => {
         setState((prev) => (prev.status === 'running' ? pause(prev) : resume(prev)));
-    };
+    }, []);
 
-    const stop = () => {
+    const stop = useCallback(() => {
         setState((prev) => complete(prev));
-    };
+    }, []);
 
-    const setPendingPace = (pace: number) => {
+    const setPendingPace = useCallback((pace: number) => {
         setState((prev) => queuePace(prev, pace));
-    };
+    }, []);
 
-    const nudgePhase = (delta: number) => {
+    const nudgePhase = useCallback((delta: number) => {
         setState((prev) => nudgeActivePhase(prev, delta));
-    };
+    }, []);
 
     return {
         state,
+        beginSession,
         togglePause,
         stop,
         setPendingPace,
         nudgePhase,
         isComplete: state.status === 'complete',
+        isIdle: state.status === 'idle',
     };
 }
 

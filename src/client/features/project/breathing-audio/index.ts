@@ -7,7 +7,15 @@ export {
     setMasterVolume,
     suspendAudio,
     playPhaseCue,
+    playVoiceCue,
+    playStartingCue,
+    playMeditation,
     preloadSampleForStyle,
+    preloadVoiceSamples,
+    preloadStartingCue,
+    preloadMeditation,
+    getStartingCueDuration,
+    getMeditationDuration,
 } from './player';
-export { getSampleStatus } from './samples';
+export { getSampleStatus, stopAllSamples, VOICE_SAMPLE_IDS } from './samples';
 export type { SampleId } from './samples';

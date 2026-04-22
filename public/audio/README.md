@@ -4,10 +4,15 @@ The breathing session player supports recorded cue styles in addition to
 synthesized ones. To enable them, drop the following files into this
 folder:
 
-| File        | Style ID | Recommended length | Target size |
-| ----------- | -------- | ------------------ | ----------- |
-| `gong.ogg`  | `gong`   | 2–4 s              | < 40 KB     |
-| `bowl.ogg`  | `bowl`   | 3–6 s              | < 60 KB     |
+| File                    | Used by                 | Recommended length | Target size |
+| ----------------------- | ----------------------- | ------------------ | ----------- |
+| `gong.ogg`              | `gong` style            | 2–4 s              | < 40 KB     |
+| `bowl.ogg`              | `bowl` style            | 3–6 s              | < 60 KB     |
+| `voice/inhale.ogg`      | Human voice toggle      | ~1 s               | < 15 KB     |
+| `voice/hold.ogg`        | Human voice toggle      | ~1 s               | < 15 KB     |
+| `voice/exhale.ogg`      | Human voice toggle      | ~1 s               | < 15 KB     |
+
+`hold.ogg` is played for both hold-in and hold-out phases.
 
 ## Where to find CC0 sources
 
@@ -38,6 +43,7 @@ future contributors can verify licensing.
 
 ## Fallback behavior
 
-If a file is missing, the session player logs nothing and the style
-falls back to the synthesized `tones` cue. The `/audio` settings screen
-shows a `missing` badge next to styles whose sample couldn't be loaded.
+If a file is missing, nothing plays for that cue. The `/audio` settings
+screen shows a `missing` badge next to styles whose sample couldn't be
+loaded, so the user can either drop the file in or pick a different
+style.

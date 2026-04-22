@@ -11,6 +11,8 @@ type AudioSettingsState = AudioSettings & {
     setPhaseCue: (phase: Phase, enabled: boolean) => void;
     togglePhaseCue: (phase: Phase) => void;
     resetCues: () => void;
+    setVoice: (voice: boolean) => void;
+    toggleVoice: () => void;
 };
 
 export const useAudioSettingsStore = createStore<AudioSettingsState>({
@@ -21,6 +23,7 @@ export const useAudioSettingsStore = createStore<AudioSettingsState>({
         volume: 0.3,
         style: 'tones',
         cues: DEFAULT_PHASE_CUES,
+        voice: false,
         setEnabled: (enabled) => set({ enabled }),
         toggleEnabled: () => set({ enabled: !get().enabled }),
         setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)) }),
@@ -32,6 +35,8 @@ export const useAudioSettingsStore = createStore<AudioSettingsState>({
             set({ cues: { ...current, [phase]: !current[phase] } });
         },
         resetCues: () => set({ cues: DEFAULT_PHASE_CUES }),
+        setVoice: (voice) => set({ voice }),
+        toggleVoice: () => set({ voice: !get().voice }),
     }),
     persistOptions: {
         partialize: (state) => ({
@@ -39,6 +44,7 @@ export const useAudioSettingsStore = createStore<AudioSettingsState>({
             volume: state.volume,
             style: state.style,
             cues: state.cues,
+            voice: state.voice,
         }),
         // Merge persisted state with current defaults so newly added cue keys
         // (e.g., after an update) are filled in with sensible defaults.

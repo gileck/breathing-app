@@ -9,6 +9,7 @@ export type ExerciseDraft = {
     pace: number;
     length: SessionLength;
     favorite: boolean;
+    meditation?: boolean;
 };
 
 type ExercisesState = {

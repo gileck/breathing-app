@@ -9,6 +9,15 @@ Record each sample's source and licence when you add it. Template:
 - Licence: CC0 / CC-BY 4.0 / ...
 - Notes: trimmed + re-encoded at 96 kbps Vorbis mono.
 
+## `voice/inhale.ogg`, `voice/hold.ogg`, `voice/exhale.ogg`, `voice/starting.ogg`
+
+- Source: Generated with ElevenLabs text-to-speech
+- Voices: Rhythm (Calm & Friendly Meditation) and Dominic (Meditation and Narration)
+- Licence: follow ElevenLabs usage terms for the plan used to generate
+- Notes: trimmed leading silence, short fade-in, loudness-normalised (EBU R128, I=-16), re-encoded mono 44.1 kHz Vorbis (quality 3).
+- `starting.ogg` is "Starting in 3, 2, 1" — played once before each session as a lead-in.
+- `meditation.ogg` is a short guided intro — played once when the exercise's "Start with meditation" toggle is on, before the countdown. Slowed 10% (`atempo=0.9`) for a calmer pace while preserving pitch.
+
 ## `bowl.ogg`
 
 - Source: Freesound.org sound #84682 (singing-bowl-strike-sound)

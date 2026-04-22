@@ -9,6 +9,7 @@ export type EditorDraft = {
     pace: number;
     length: SessionLength;
     favorite: boolean;
+    meditation: boolean;
 };
 
 type EditorState = {
@@ -19,6 +20,7 @@ type EditorState = {
     setName: (name: string) => void;
     setPace: (pace: number) => void;
     setFavorite: (favorite: boolean) => void;
+    setMeditation: (meditation: boolean) => void;
 };
 
 export const useEditorStore = createStore<EditorState>({
@@ -53,6 +55,11 @@ export const useEditorStore = createStore<EditorState>({
             const current = get().draft;
             if (!current) return;
             set({ draft: { ...current, favorite } });
+        },
+        setMeditation: (meditation) => {
+            const current = get().draft;
+            if (!current) return;
+            set({ draft: { ...current, meditation } });
         },
     }),
 });
