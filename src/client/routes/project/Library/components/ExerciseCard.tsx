@@ -2,9 +2,10 @@ import type { Exercise } from '@/client/features/project/exercises';
 import {
     breathsPerMinute,
     formatLastUsed,
+    lengthLabel,
     patternString,
 } from '@/client/features/project/exercises';
-import { Star, ChevronRight } from 'lucide-react';
+import { Star, Play } from 'lucide-react';
 import { TimelineBar } from './TimelineBar';
 
 type Props = {
@@ -21,7 +22,7 @@ export function ExerciseCard({ exercise, onOpen, onStart, onToggleFavorite }: Pr
                 type="button"
                 onClick={onToggleFavorite}
                 className="flex min-h-11 min-w-11 items-center justify-center rounded-l-xl pl-3 text-muted-foreground hover:text-foreground"
-                aria-label={exercise.favorite ? 'Unpin exercise' : 'Pin exercise'}
+                aria-label={exercise.favorite ? 'Remove from favorites' : 'Add to favorites'}
             >
                 <Star
                     size={18}
@@ -36,10 +37,12 @@ export function ExerciseCard({ exercise, onOpen, onStart, onToggleFavorite }: Pr
             >
                 <div className="font-medium leading-tight">{exercise.name}</div>
                 <TimelineBar pattern={exercise.pattern} className="max-w-[180px]" />
-                <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-2 font-mono text-xs text-muted-foreground">
                     <span>{patternString(exercise.pattern)}</span>
                     <span aria-hidden>·</span>
-                    <span>{breathsPerMinute(exercise.pattern, exercise.pace)}/min</span>
+                    <span>{breathsPerMinute(exercise.pattern)}/min</span>
+                    <span aria-hidden>·</span>
+                    <span>{lengthLabel(exercise.length)}</span>
                     <span aria-hidden>·</span>
                     <span>{formatLastUsed(exercise.lastUsedAt)}</span>
                 </div>
@@ -48,10 +51,10 @@ export function ExerciseCard({ exercise, onOpen, onStart, onToggleFavorite }: Pr
             <button
                 type="button"
                 onClick={onStart}
-                className="flex min-h-11 min-w-11 items-center justify-center rounded-r-xl pr-3 text-muted-foreground hover:text-foreground"
                 aria-label={`Start ${exercise.name}`}
+                className="mr-3 flex h-11 w-11 flex-shrink-0 items-center justify-center self-center rounded-full bg-primary/10 text-primary transition-colors hover:bg-primary/20"
             >
-                <ChevronRight size={18} />
+                <Play className="h-[18px] w-[18px] fill-current" aria-hidden />
             </button>
         </div>
     );

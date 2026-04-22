@@ -6,6 +6,8 @@ import {
     selectExerciseById,
     patternString,
     breathsPerMinute,
+    estimatedDurationSeconds,
+    totalSeconds,
 } from '@/client/features/project/exercises';
 import {
     phaseCountdownSeconds,
@@ -16,10 +18,13 @@ import {
 import {
     ensureAudio,
     getMeditationDuration,
+    getMeditationEndDuration,
     getStartingCueDuration,
     playMeditation,
+    playMeditationEnd,
     playStartingCue,
     preloadMeditation,
+    preloadMeditationEnd,
     preloadSampleForStyle,
     preloadStartingCue,
     preloadVoiceSamples,
@@ -54,7 +59,7 @@ export function Session() {
 
     if (!exercise) {
         return (
-            <div className="dark breath-session-surface flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+            <div className="dark breath-session-surface flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
                 <p className="text-base">Exercise not found.</p>
                 <button
                     type="button"
@@ -83,7 +88,6 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
         state,
         beginSession,
         togglePause,
-        stop,
         setPendingPace,
         nudgePhase,
         isComplete,
@@ -102,6 +106,11 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const [preStartStep, setPreStartStep] = useState<'meditation' | 'countdown'>(
         safeExercise.meditation ? 'meditation' : 'countdown',
     );
+    // When the engine completes and the exercise has meditation enabled, we
+    // hold the Session mounted for the wrap-up audio instead of snapping
+    // straight back to the library.
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral end-of-session step driven by setTimeout
+    const [showEndMeditation, setShowEndMeditation] = useState(false);
 
     useEffect(() => {
         setBgShouldPlay(true);
@@ -117,6 +126,9 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     // Pre-session sequence: optional meditation → 3/2/1 countdown → engine starts.
     // Driven by real sample durations when available, with sensible fallbacks.
     const preSessionStartedRef = useRef(false);
+    // Populated while the meditation intro is playing so the UI's Skip
+    // button can jump straight to the countdown.
+    const skipIntroRef = useRef<(() => void) | null>(null);
     useEffect(() => {
         if (!isIdle) return;
         if (preSessionStartedRef.current) return;
@@ -156,6 +168,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                 // immediately after meditation ends.
                 await Promise.all([
                     withMeditation ? preloadMeditation() : Promise.resolve(0),
+                    withMeditation ? preloadMeditationEnd() : Promise.resolve(0),
                     preloadStartingCue(),
                 ]);
             }
@@ -166,10 +179,19 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                 const warm = getMeditationDuration();
                 if (warm > 0) meditationMs = warm * 1000;
                 if (audioEnabled) playMeditation();
-                timers.push(setTimeout(() => {
+                const meditationTimer = setTimeout(() => {
                     if (cancelled) return;
+                    skipIntroRef.current = null;
                     runCountdown(audioEnabled);
-                }, meditationMs));
+                }, meditationMs);
+                timers.push(meditationTimer);
+                skipIntroRef.current = () => {
+                    clearTimeout(meditationTimer);
+                    skipIntroRef.current = null;
+                    // Cut off the intro audio so it doesn't bleed into the countdown.
+                    stopAllSamples();
+                    runCountdown(audioEnabled);
+                };
             } else {
                 runCountdown(audioEnabled);
             }
@@ -178,13 +200,26 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
         void run();
         return () => {
             cancelled = true;
+            skipIntroRef.current = null;
             timers.forEach(clearTimeout);
         };
     }, [isIdle, beginSession, safeExercise.meditation]);
 
+    // Completion → optional end-meditation wrap-up → navigate back.
     useEffect(() => {
-        if (isComplete) navigate('/');
-    }, [isComplete, navigate]);
+        if (!isComplete) return;
+        const audio = useAudioSettingsStore.getState();
+        if (!safeExercise.meditation) {
+            navigate('/');
+            return;
+        }
+        setShowEndMeditation(true);
+        // Playback only if audio is enabled; visual wrap-up shows regardless.
+        if (audio.enabled) playMeditationEnd();
+        const durationMs = (getMeditationEndDuration() || 15) * 1000;
+        const timer = setTimeout(() => navigate('/'), durationMs);
+        return () => clearTimeout(timer);
+    }, [isComplete, navigate, safeExercise.meditation]);
 
     const countdown = phaseCountdownSeconds(state);
     const scale = useMemo(
@@ -195,13 +230,52 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const effectivePattern = state.pendingPattern ?? state.pattern;
     const effectivePace = state.pendingPace ?? state.pace;
     const pending = hasPendingChanges(state);
-    const targetCycles =
-        safeExercise.length.kind === 'cycles' ? safeExercise.length.value : null;
+    // Derive a target cycle count even for minutes-based (legacy) lengths so
+    // the CYCLE readout always shows progress / total.
+    const targetCycles = (() => {
+        if (safeExercise.length.kind === 'cycles') return safeExercise.length.value;
+        if (safeExercise.length.kind === 'minutes') {
+            const cycleSec = totalSeconds(safeExercise.pattern);
+            if (cycleSec <= 0) return null;
+            return Math.max(1, Math.round((safeExercise.length.value * 60) / cycleSec));
+        }
+        return null;
+    })();
+
+    if (showEndMeditation) {
+        return (
+            <div className="dark breath-session-surface relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
+                <div className="flex flex-col items-center gap-6">
+                    <div
+                        className="breath-halo h-40 w-40 rounded-full"
+                        style={{ animation: 'breath-pulse 3s ease-in-out infinite' }}
+                        aria-hidden
+                    />
+                    <div className="flex flex-col items-center gap-2">
+                        <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-primary/80">
+                            Wrapping up
+                        </span>
+                        <span className="text-lg font-light text-foreground/85">
+                            Nice work. Take a moment before standing.
+                        </span>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => navigate('/')}
+                    aria-label="Finish session"
+                    className="absolute right-5 top-6 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
+                >
+                    <X className="h-5 w-5" aria-hidden />
+                </button>
+            </div>
+        );
+    }
 
     if (isIdle) {
         const isMeditation = preStartStep === 'meditation';
         return (
-            <div className="dark breath-session-surface relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 text-center">
+            <div className="dark breath-session-surface relative flex h-full flex-col items-center justify-center overflow-hidden px-6 text-center">
                 {isMeditation ? (
                     <div className="flex flex-col items-center gap-6">
                         <div className="breath-halo h-40 w-40 rounded-full" style={{ animation: 'breath-pulse 3s ease-in-out infinite' }} aria-hidden />
@@ -213,6 +287,13 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                                 Take a moment. The exercise begins shortly.
                             </span>
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => skipIntroRef.current?.()}
+                            className="mt-4 min-h-11 rounded-full border border-white/15 bg-white/5 px-5 font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/80 transition-colors hover:bg-white/10"
+                        >
+                            Skip intro
+                        </button>
                     </div>
                 ) : (
                     <div className="flex flex-col items-center gap-3">
@@ -236,7 +317,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                 )}
                 <button
                     type="button"
-                    onClick={stop}
+                    onClick={() => navigate('/')}
                     aria-label="Cancel session"
                     className="absolute right-5 top-6 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
                 >
@@ -247,22 +328,56 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     }
 
     return (
-        <div className="dark breath-session-surface relative flex min-h-screen flex-col overflow-hidden">
+        <div className="dark breath-session-surface relative flex h-full flex-col overflow-hidden">
             <div className="flex items-start justify-between px-5 pt-6">
-                <div className="flex flex-col">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                        Cycle
-                    </span>
-                    <span className="font-mono tabular-nums text-base">
-                        {(state.cycle + 1).toString().padStart(2, '0')}
-                        {targetCycles !== null && (
-                            <span className="text-muted-foreground">
-                                {' / '}
-                                {targetCycles}
-                            </span>
-                        )}
-                    </span>
-                </div>
+                {(() => {
+                    // Total time shown at 1× pace — runtime pace tweaks just
+                    // stretch/compress actual duration from this baseline.
+                    const totalSec = estimatedDurationSeconds(
+                        safeExercise.pattern,
+                        1,
+                        safeExercise.length,
+                    );
+                    const totalClock = (seconds: number): string => {
+                        const t = Math.max(0, Math.round(seconds));
+                        return `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
+                    };
+                    return (
+                        <div className="flex items-start gap-6">
+                            <div className="flex flex-col">
+                                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                    Cycle
+                                </span>
+                                <span className="font-mono tabular-nums text-base">
+                                    {targetCycles !== null ? (
+                                        <>
+                                            ({state.cycle + 1}
+                                            <span className="text-muted-foreground">
+                                                /{targetCycles}
+                                            </span>
+                                            )
+                                        </>
+                                    ) : (
+                                        state.cycle + 1
+                                    )}
+                                </span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                                    Time
+                                </span>
+                                <span className="font-mono tabular-nums text-base">
+                                    {formatElapsed(state.totalElapsedMs)}
+                                    {totalSec !== null && totalSec > 0 && (
+                                        <span className="text-muted-foreground">
+                                            /{totalClock(totalSec)}
+                                        </span>
+                                    )}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })()}
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
@@ -279,7 +394,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                     </button>
                     <button
                         type="button"
-                        onClick={stop}
+                        onClick={() => navigate('/')}
                         aria-label="End session"
                         className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
                     >
@@ -345,7 +460,6 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
 
                 <SessionStats
                     stats={[
-                        { label: 'Elapsed', value: formatElapsed(state.totalElapsedMs) },
                         {
                             label: 'Rate',
                             value: `${breathsPerMinute(effectivePattern, effectivePace)}/min`,

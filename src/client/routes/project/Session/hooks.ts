@@ -42,7 +42,9 @@ const sessionTargetCycles = (exercise: Exercise): number | null => {
 export function useBreathSession(exercise: Exercise): EngineHandle {
     // eslint-disable-next-line state-management/prefer-state-architecture -- per-session engine state is ephemeral to this route instance
     const [state, setState] = useState<EngineState>(() =>
-        createInitialState(exercise.pattern, exercise.pace),
+        // Pace is a runtime-only knob — sessions always start at 1× and the
+        // user tweaks it mid-session with the Fast / Slow buttons.
+        createInitialState(exercise.pattern, 1),
     );
     const stateRef = useRef(state);
     stateRef.current = state;

@@ -6,7 +6,6 @@ import { SEED_EXERCISES } from './seed';
 export type ExerciseDraft = {
     name: string;
     pattern: Pattern;
-    pace: number;
     length: SessionLength;
     favorite: boolean;
     meditation?: boolean;

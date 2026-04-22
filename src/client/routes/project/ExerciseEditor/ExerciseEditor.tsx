@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Play, Trash2, Star } from 'lucide-react';
+import { ArrowLeft, Play, Trash2, Star, Minus, Plus, Pencil } from 'lucide-react';
 import { Button } from '@/client/components/template/ui/button';
 import { ConfirmDialog } from '@/client/components/template/ui/confirm-dialog';
-import { Switch } from '@/client/components/template/ui/switch';
+import {
+    Dialog,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/client/components/template/ui/dialog';
+import { Input } from '@/client/components/template/ui/input';
 import { Label } from '@/client/components/template/ui/label';
+import { Switch } from '@/client/components/template/ui/switch';
 import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
@@ -12,22 +20,20 @@ import {
     patternString,
     isPatternValid,
     PHASE_COLOR_VAR,
+    estimatedDurationSeconds,
+    formatClockDuration,
+    totalSeconds,
+    type Exercise,
+    type Pattern,
     type Phase,
+    type SessionLength,
 } from '@/client/features/project/exercises';
 import { ensureAudio } from '@/client/features/project/breathing-audio';
 import { TimelineBar } from '../Library/components/TimelineBar';
 import { PhaseStepper } from './components/PhaseStepper';
-import { SaveSheet } from './components/SaveSheet';
-import { useEditorStore, type EditorDraft } from './store';
 
-const DEFAULT_DRAFT: EditorDraft = {
-    name: '',
-    pattern: { inhale: 4, holdIn: 7, exhale: 8, holdOut: 0 },
-    pace: 1,
-    length: { kind: 'minutes', value: 5 },
-    favorite: false,
-    meditation: false,
-};
+const DEFAULT_PATTERN: Pattern = { inhale: 4, holdIn: 7, exhale: 8, holdOut: 0 };
+const DEFAULT_LENGTH: SessionLength = { kind: 'cycles', value: 12 };
 
 const PHASE_ROWS: Array<{ phase: Phase; label: string }> = [
     { phase: 'inhale', label: 'Inhale' },
@@ -35,6 +41,21 @@ const PHASE_ROWS: Array<{ phase: Phase; label: string }> = [
     { phase: 'exhale', label: 'Exhale' },
     { phase: 'holdOut', label: 'Hold out' },
 ];
+
+// Legacy minute-based lengths get converted to equivalent cycles on edit so
+// sessions always end on a clean cycle boundary.
+const normalizeLength = (exercise: Exercise): SessionLength => {
+    if (exercise.length.kind === 'cycles') return exercise.length;
+    if (exercise.length.kind === 'minutes') {
+        const cycleSec = totalSeconds(exercise.pattern);
+        const cycles =
+            cycleSec > 0
+                ? Math.max(1, Math.round((exercise.length.value * 60) / cycleSec))
+                : 12;
+        return { kind: 'cycles', value: cycles };
+    }
+    return { kind: 'cycles', value: 12 };
+};
 
 export function ExerciseEditor() {
     const { navigate, routeParams } = useRouter();
@@ -45,44 +66,39 @@ export function ExerciseEditor() {
     const updateExercise = useExercisesStore((s) => s.updateExercise);
     const deleteExercise = useExercisesStore((s) => s.deleteExercise);
 
-    const draft = useEditorStore((s) => s.draft);
-    const setDraft = useEditorStore((s) => s.setDraft);
-    const setPhaseValue = useEditorStore((s) => s.setPhaseValue);
-    const setPace = useEditorStore((s) => s.setPace);
-    const setFavorite = useEditorStore((s) => s.setFavorite);
-    const setMeditation = useEditorStore((s) => s.setMeditation);
-    const clearDraft = useEditorStore((s) => s.clearDraft);
-
-    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral dialog state
-    const [saveOpen, setSaveOpen] = useState(false);
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral confirm dialog
     const [deleteOpen, setDeleteOpen] = useState(false);
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral dialog open state for rename
+    const [renameOpen, setRenameOpen] = useState(false);
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral text input (valid useState case)
+    const [nameDraft, setNameDraft] = useState('');
 
+    // /exercise/new path: create a fresh record immediately and redirect to
+    // its edit URL so every later change has a real persisted exercise to
+    // auto-save against.
     useEffect(() => {
-        if (editingId && existing) {
-            setDraft({
-                exerciseId: existing.id,
-                name: existing.name,
-                pattern: existing.pattern,
-                pace: existing.pace,
-                length: existing.length,
-                favorite: existing.favorite,
-                meditation: existing.meditation ?? false,
-            });
-        } else if (!editingId) {
-            setDraft({ ...DEFAULT_DRAFT });
+        if (editingId) return;
+        const created = addExercise({
+            name: 'Untitled',
+            pattern: { ...DEFAULT_PATTERN },
+            length: { ...DEFAULT_LENGTH },
+            favorite: false,
+            meditation: false,
+        });
+        navigate(`/exercise/${created.id}`, { replace: true });
+    }, [editingId, addExercise, navigate]);
+
+    // Silently migrate legacy minutes-based length to cycles the first time
+    // a pre-migration exercise is opened.
+    useEffect(() => {
+        if (!existing) return;
+        if (existing.length.kind === 'minutes') {
+            updateExercise(existing.id, { length: normalizeLength(existing) });
         }
-    }, [editingId, existing, setDraft]);
+    }, [existing, updateExercise]);
 
-    useEffect(() => {
-        return () => clearDraft();
-    }, [clearDraft]);
-
-    if (!draft) {
-        return null;
-    }
-
-    if (editingId && !existing) {
+    if (!editingId) return null;
+    if (!existing) {
         return (
             <div className="mx-auto max-w-2xl px-4 py-8 text-center">
                 <p className="mb-4 text-muted-foreground">Exercise not found.</p>
@@ -91,55 +107,40 @@ export function ExerciseEditor() {
         );
     }
 
-    const valid = isPatternValid(draft.pattern);
-    const isEditing = Boolean(editingId && existing);
+    const valid = isPatternValid(existing.pattern);
 
-    const commit = (name: string) => {
-        if (!valid || name.trim().length === 0) return;
-        if (isEditing && existing) {
-            updateExercise(existing.id, {
-                name: name.trim(),
-                pattern: draft.pattern,
-                pace: draft.pace,
-                length: draft.length,
-                favorite: draft.favorite,
-                meditation: draft.meditation,
-            });
-        } else {
-            addExercise({
-                name: name.trim(),
-                pattern: draft.pattern,
-                pace: draft.pace,
-                length: draft.length,
-                favorite: draft.favorite,
-                meditation: draft.meditation,
-            });
-        }
-        setSaveOpen(false);
-        navigate('/');
+    const setPhaseValue = (phase: Phase, value: number) =>
+        updateExercise(existing.id, {
+            pattern: {
+                ...existing.pattern,
+                [phase]: Math.max(0, Math.min(30, Math.round(value))),
+            },
+        });
+
+    const setLength = (length: SessionLength) => updateExercise(existing.id, { length });
+    const setFavorite = (favorite: boolean) =>
+        updateExercise(existing.id, { favorite });
+    const setMeditation = (meditation: boolean) =>
+        updateExercise(existing.id, { meditation });
+
+    const commitName = () => {
+        const trimmed = nameDraft.trim();
+        updateExercise(existing.id, { name: trimmed.length > 0 ? trimmed : 'Untitled' });
+        setRenameOpen(false);
+    };
+
+    const openRename = () => {
+        setNameDraft(existing.name);
+        setRenameOpen(true);
     };
 
     const startSession = () => {
         if (!valid) return;
-        // Unlock WebAudio inside the click handler so iOS PWAs allow sound in the session.
         void ensureAudio();
-        if (isEditing && existing) {
-            navigate(`/session/${existing.id}`);
-            return;
-        }
-        const created = addExercise({
-            name: draft.name.trim() || 'Untitled',
-            pattern: draft.pattern,
-            pace: draft.pace,
-            length: draft.length,
-            favorite: draft.favorite,
-            meditation: draft.meditation,
-        });
-        navigate(`/session/${created.id}`);
+        navigate(`/session/${existing.id}`);
     };
 
     const confirmDelete = () => {
-        if (!existing) return;
         deleteExercise(existing.id);
         setDeleteOpen(false);
         navigate('/');
@@ -147,64 +148,66 @@ export function ExerciseEditor() {
 
     return (
         <div className="mx-auto max-w-2xl px-4 pb-24 pt-6 sm:px-6">
-            <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+            <div className="mb-6 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1">
                     <Button
                         type="button"
                         size="icon"
                         variant="ghost"
                         onClick={() => navigate('/')}
                         aria-label="Back to library"
-                        className="h-11 w-11"
+                        className="h-11 w-11 flex-shrink-0"
                     >
                         <ArrowLeft className="h-5 w-5" aria-hidden />
                     </Button>
-                    <h1 className="text-xl font-semibold tracking-tight">
-                        {isEditing ? 'Edit exercise' : 'Pattern Builder'}
-                    </h1>
+                    <button
+                        type="button"
+                        onClick={openRename}
+                        className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-left hover:bg-accent/40"
+                    >
+                        <h1 className="truncate text-xl font-semibold tracking-tight">
+                            {existing.name}
+                        </h1>
+                        <Pencil className="h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden />
+                    </button>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex flex-shrink-0 items-center gap-1">
                     <Button
                         type="button"
                         size="icon"
                         variant="ghost"
-                        onClick={() => setFavorite(!draft.favorite)}
-                        aria-label={draft.favorite ? 'Unpin' : 'Pin'}
-                        aria-pressed={draft.favorite}
+                        onClick={() => setFavorite(!existing.favorite)}
+                        aria-label={existing.favorite ? 'Unfavorite' : 'Favorite'}
+                        aria-pressed={existing.favorite}
                         className="h-11 w-11"
                     >
                         <Star
-                            className={`h-5 w-5 ${draft.favorite ? 'fill-primary text-primary' : ''}`}
+                            className={`h-5 w-5 ${existing.favorite ? 'fill-primary text-primary' : ''}`}
                         />
                     </Button>
-                    {isEditing && (
-                        <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setDeleteOpen(true)}
-                            aria-label="Delete exercise"
-                            className="h-11 w-11 text-destructive"
-                        >
-                            <Trash2 className="h-5 w-5" />
-                        </Button>
-                    )}
+                    <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setDeleteOpen(true)}
+                        aria-label="Delete exercise"
+                        className="h-11 w-11 text-destructive"
+                    >
+                        <Trash2 className="h-5 w-5" />
+                    </Button>
                 </div>
             </div>
 
             <div className="mb-8 rounded-2xl border bg-card p-6 text-center">
                 <div className="font-mono tabular-nums text-5xl font-light leading-none">
-                    {breathsPerMinute(draft.pattern, draft.pace)}
+                    {breathsPerMinute(existing.pattern)}
                 </div>
                 <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                     breaths / min
                 </div>
-                <TimelineBar
-                    pattern={draft.pattern}
-                    className="mx-auto mt-4 max-w-xs"
-                />
+                <TimelineBar pattern={existing.pattern} className="mx-auto mt-4 max-w-xs" />
                 <div className="mt-3 font-mono text-xs text-muted-foreground">
-                    {patternString(draft.pattern)}
+                    {patternString(existing.pattern)}
                 </div>
             </div>
 
@@ -214,36 +217,73 @@ export function ExerciseEditor() {
                         key={phase}
                         phase={phase}
                         label={label}
-                        value={draft.pattern[phase]}
+                        value={existing.pattern[phase]}
                         cssVar={PHASE_COLOR_VAR[phase]}
                         onChange={(v) => setPhaseValue(phase, v)}
                     />
                 ))}
             </div>
 
-            <div className="mb-8 rounded-2xl border bg-card p-4">
-                <div className="mb-3 flex items-baseline justify-between">
-                    <div className="text-sm font-medium">Pace</div>
-                    <div className="font-mono text-sm tabular-nums">
-                        {draft.pace.toFixed(2)}×
+            {(() => {
+                const cycles = existing.length.kind === 'cycles' ? existing.length.value : 12;
+                const minCycles = 1;
+                const maxCycles = 200;
+                const adjust = (delta: number) => {
+                    const next = Math.max(minCycles, Math.min(maxCycles, cycles + delta));
+                    setLength({ kind: 'cycles', value: next });
+                };
+                const estimatedSec = estimatedDurationSeconds(
+                    existing.pattern,
+                    1,
+                    { kind: 'cycles', value: cycles },
+                );
+                return (
+                    <div className="mb-8 rounded-2xl border bg-card p-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <div className="text-base font-medium">Length</div>
+                                <div className="text-sm text-muted-foreground">
+                                    Total cycles
+                                </div>
+                            </div>
+                            <div className="flex items-stretch overflow-hidden rounded-xl border">
+                                <button
+                                    type="button"
+                                    onClick={() => adjust(-1)}
+                                    disabled={cycles <= minCycles}
+                                    aria-label="Decrease cycles"
+                                    className="flex min-h-11 w-11 items-center justify-center bg-muted/40 text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                                >
+                                    <Minus className="h-4 w-4" aria-hidden />
+                                </button>
+                                <div
+                                    aria-live="polite"
+                                    className="flex min-h-11 w-16 items-center justify-center border-x bg-background font-mono text-lg tabular-nums"
+                                >
+                                    {cycles}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => adjust(1)}
+                                    disabled={cycles >= maxCycles}
+                                    aria-label="Increase cycles"
+                                    className="flex min-h-11 w-11 items-center justify-center bg-muted/40 text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                                >
+                                    <Plus className="h-4 w-4" aria-hidden />
+                                </button>
+                            </div>
+                        </div>
+                        {estimatedSec !== null && estimatedSec > 0 && (
+                            <div className="mt-4 border-t pt-3 text-center text-xs text-muted-foreground">
+                                Session lasts about{' '}
+                                <span className="font-medium text-foreground/80">
+                                    {formatClockDuration(estimatedSec)}
+                                </span>
+                            </div>
+                        )}
                     </div>
-                </div>
-                <input
-                    type="range"
-                    min={0.5}
-                    max={2}
-                    step={0.05}
-                    value={draft.pace}
-                    onChange={(e) => setPace(parseFloat(e.target.value))}
-                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
-                    aria-label="Pace multiplier"
-                />
-                <div className="mt-1 flex justify-between font-mono text-[10px] text-muted-foreground">
-                    <span>0.5×</span>
-                    <span>1×</span>
-                    <span>2×</span>
-                </div>
-            </div>
+                );
+            })()}
 
             <div className="mb-8 rounded-2xl border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -257,47 +297,68 @@ export function ExerciseEditor() {
                     </div>
                     <Switch
                         id="exercise-meditation"
-                        checked={draft.meditation ?? false}
+                        checked={existing.meditation ?? false}
                         onCheckedChange={setMeditation}
                     />
                 </div>
             </div>
 
-            <div className="flex gap-2">
-                <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setSaveOpen(true)}
-                    disabled={!valid}
-                    className="h-12 flex-1 rounded-xl"
-                >
-                    {isEditing ? 'Save changes' : 'Save'}
-                </Button>
-                <Button
-                    type="button"
-                    onClick={startSession}
-                    disabled={!valid}
-                    className="h-12 flex-[2] rounded-xl"
-                >
-                    <Play className="mr-2 h-4 w-4" aria-hidden />
-                    Start session
-                </Button>
-            </div>
+            <Button
+                type="button"
+                onClick={startSession}
+                disabled={!valid}
+                className="h-12 w-full rounded-xl"
+            >
+                <Play className="mr-2 h-4 w-4" aria-hidden />
+                Start session
+            </Button>
 
-            <SaveSheet
-                open={saveOpen}
-                onOpenChange={setSaveOpen}
-                pattern={draft.pattern}
-                pace={draft.pace}
-                initialName={draft.name || existing?.name}
-                onSave={commit}
-            />
+            <Dialog
+                open={renameOpen}
+                onOpenChange={(open) => {
+                    setRenameOpen(open);
+                    if (!open) setNameDraft('');
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Rename exercise</DialogTitle>
+                    </DialogHeader>
+                    <Input
+                        autoFocus
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitName();
+                        }}
+                        placeholder="Exercise name"
+                        className="h-12"
+                    />
+                    <DialogFooter className="gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setRenameOpen(false)}
+                            className="h-11 rounded-xl"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={commitName}
+                            className="h-11 rounded-xl"
+                        >
+                            Save
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <ConfirmDialog
                 open={deleteOpen}
                 onOpenChange={setDeleteOpen}
                 title="Delete exercise?"
-                description={`"${existing?.name}" will be removed. This cannot be undone.`}
+                description={`"${existing.name}" will be removed. This cannot be undone.`}
                 confirmText="Delete"
                 variant="destructive"
                 onConfirm={confirmDelete}

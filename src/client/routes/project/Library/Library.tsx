@@ -5,29 +5,14 @@ import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
     sortByLastUsed,
-    type Exercise,
 } from '@/client/features/project/exercises';
 import { ensureAudio } from '@/client/features/project/breathing-audio';
-import { PinnedCard } from './components/PinnedCard';
 import { ExerciseCard } from './components/ExerciseCard';
-
-const pickPinned = (exercises: Exercise[]): { exercise: Exercise; eyebrow: string } | null => {
-    if (exercises.length === 0) return null;
-    const favorite = exercises.find((e) => e.favorite);
-    if (favorite) return { exercise: favorite, eyebrow: 'Pinned' };
-    const mostRecent = [...exercises].sort(sortByLastUsed)[0];
-    if (mostRecent?.lastUsedAt) {
-        return { exercise: mostRecent, eyebrow: 'Last session' };
-    }
-    return { exercise: exercises[0], eyebrow: 'Suggested' };
-};
 
 export function Library() {
     const { navigate } = useRouter();
     const exercises = useExercisesStore((s) => s.exercises);
     const toggleFavorite = useExercisesStore((s) => s.toggleFavorite);
-
-    const pinned = useMemo(() => pickPinned(exercises), [exercises]);
 
     const startSession = (id: string) => {
         // Unlock WebAudio inside the click handler so iOS PWAs allow sound in the session.
@@ -35,15 +20,23 @@ export function Library() {
         navigate(`/session/${id}`);
     };
 
-    const listed = useMemo(() => {
-        const pinnedId = pinned?.exercise.id;
-        return exercises
-            .filter((e) => e.id !== pinnedId)
-            .sort((a, b) => {
-                if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
-                return sortByLastUsed(a, b);
-            });
-    }, [exercises, pinned]);
+    const { favorites, others } = useMemo(() => {
+        const sorted = [...exercises].sort(sortByLastUsed);
+        return {
+            favorites: sorted.filter((e) => e.favorite),
+            others: sorted.filter((e) => !e.favorite),
+        };
+    }, [exercises]);
+
+    const renderCard = (exercise: (typeof exercises)[number]) => (
+        <ExerciseCard
+            key={exercise.id}
+            exercise={exercise}
+            onOpen={() => navigate(`/exercise/${exercise.id}`)}
+            onStart={() => startSession(exercise.id)}
+            onToggleFavorite={() => toggleFavorite(exercise.id)}
+        />
+    );
 
     return (
         <div className="mx-auto max-w-2xl px-4 pb-24 pt-6 sm:px-6">
@@ -78,34 +71,28 @@ export function Library() {
                 </div>
             </div>
 
-            {pinned && (
-                <div className="mb-6">
-                    <PinnedCard
-                        exercise={pinned.exercise}
-                        eyebrow={pinned.eyebrow}
-                        onStart={() => startSession(pinned.exercise.id)}
-                        onOpen={() => navigate(`/exercise/${pinned.exercise.id}`)}
-                    />
-                </div>
-            )}
-
-            {listed.length > 0 && (
-                <>
+            {favorites.length > 0 && (
+                <section className="mb-6">
                     <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                        All exercises
+                        Favorites
                     </div>
                     <div className="flex flex-col gap-2">
-                        {listed.map((exercise) => (
-                            <ExerciseCard
-                                key={exercise.id}
-                                exercise={exercise}
-                                onOpen={() => navigate(`/exercise/${exercise.id}`)}
-                                onStart={() => startSession(exercise.id)}
-                                onToggleFavorite={() => toggleFavorite(exercise.id)}
-                            />
-                        ))}
+                        {favorites.map(renderCard)}
                     </div>
-                </>
+                </section>
+            )}
+
+            {others.length > 0 && (
+                <section>
+                    {favorites.length > 0 && (
+                        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                            All exercises
+                        </div>
+                    )}
+                    <div className="flex flex-col gap-2">
+                        {others.map(renderCard)}
+                    </div>
+                </section>
             )}
 
             {exercises.length === 0 && (

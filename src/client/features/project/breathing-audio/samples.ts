@@ -7,7 +7,8 @@ export type SampleId =
     | 'voice-hold'
     | 'voice-exhale'
     | 'voice-starting'
-    | 'voice-meditation';
+    | 'voice-meditation'
+    | 'voice-meditation-end';
 
 type SampleConfig = {
     url: string;
@@ -61,6 +62,11 @@ const SAMPLES: Record<SampleId, SampleConfig> = {
         playbackRates: FLAT_RATES,
         gain: 1,
     },
+    'voice-meditation-end': {
+        url: '/audio/voice/meditation-end.ogg',
+        playbackRates: FLAT_RATES,
+        gain: 1,
+    },
 };
 
 export const VOICE_SAMPLE_IDS: readonly SampleId[] = [
@@ -98,6 +104,7 @@ const cache: Record<SampleId, SampleEntry> = {
     'voice-exhale': { status: 'idle', buffer: null, promise: null },
     'voice-starting': { status: 'idle', buffer: null, promise: null },
     'voice-meditation': { status: 'idle', buffer: null, promise: null },
+    'voice-meditation-end': { status: 'idle', buffer: null, promise: null },
 };
 
 export const getSampleBuffer = (id: SampleId): AudioBuffer | null =>

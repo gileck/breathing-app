@@ -1,13 +1,53 @@
-import type { Exercise, Pattern, Phase } from './types';
+import type { Exercise, Pattern, Phase, SessionLength } from './types';
 import { PHASES } from './types';
 
 export const totalSeconds = (pattern: Pattern): number =>
     pattern.inhale + pattern.holdIn + pattern.exhale + pattern.holdOut;
 
+/**
+ * Seconds the full exercise is expected to take given its pattern, pace,
+ * and length target. Returns null when the length is open-ended.
+ */
+export const estimatedDurationSeconds = (
+    pattern: Pattern,
+    pace: number,
+    length: SessionLength,
+): number | null => {
+    if (length.kind === 'open') return null;
+    const cycle = totalSeconds(pattern);
+    if (cycle <= 0 || pace <= 0) return 0;
+    if (length.kind === 'minutes') return length.value * 60;
+    return (cycle / pace) * length.value;
+};
+
+/** Short human-readable length, e.g. "5 min" or "24 cycles" or "Open". */
+export const lengthLabel = (length: SessionLength): string => {
+    if (length.kind === 'open') return 'Open';
+    if (length.kind === 'minutes') {
+        return length.value === 1 ? '1 min' : `${length.value} min`;
+    }
+    return length.value === 1 ? '1 cycle' : `${length.value} cycles`;
+};
+
+export const formatClockDuration = (seconds: number): string => {
+    const total = Math.max(0, Math.round(seconds));
+    const mins = Math.floor(total / 60);
+    const secs = total % 60;
+    if (mins === 0) return `${secs}s`;
+    if (secs === 0) return `${mins}m`;
+    return `${mins}m ${secs}s`;
+};
+
 export const breathsPerMinute = (pattern: Pattern, pace = 1): string => {
     const base = totalSeconds(pattern);
     if (base <= 0 || pace <= 0) return '—';
     return (60 / (base / pace)).toFixed(1);
+};
+
+/** Seconds per full cycle at the given pace (defaults to 1×). */
+export const cycleSeconds = (pattern: Pattern, pace = 1): number => {
+    if (pace <= 0) return 0;
+    return totalSeconds(pattern) / pace;
 };
 
 export const patternString = (pattern: Pattern, sep = '–'): string =>

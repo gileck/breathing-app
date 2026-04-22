@@ -11,6 +11,7 @@ import {
 
 const STARTING_SAMPLE_ID: SampleId = 'voice-starting';
 const MEDITATION_SAMPLE_ID: SampleId = 'voice-meditation';
+const MEDITATION_END_SAMPLE_ID: SampleId = 'voice-meditation-end';
 
 type WebkitWindow = Window & {
     webkitAudioContext?: typeof AudioContext;
@@ -301,6 +302,20 @@ export const playMeditation = (): void => {
 
 export const getMeditationDuration = (): number =>
     getSampleBuffer(MEDITATION_SAMPLE_ID)?.duration ?? 0;
+
+export const preloadMeditationEnd = async (): Promise<number> => {
+    if (!ctx) return 0;
+    const buffer = await loadSample(ctx, MEDITATION_END_SAMPLE_ID);
+    return buffer?.duration ?? 0;
+};
+
+export const playMeditationEnd = (): void => {
+    if (!ctx || !masterGain || ctx.state !== 'running') return;
+    playSample(ctx, masterGain, MEDITATION_END_SAMPLE_ID, 'inhale');
+};
+
+export const getMeditationEndDuration = (): number =>
+    getSampleBuffer(MEDITATION_END_SAMPLE_ID)?.duration ?? 0;
 
 export const playPhaseCue = (phase: Phase, style: AudioCueStyle = 'tones'): void => {
     if (!ctx || !masterGain || ctx.state !== 'running') return;

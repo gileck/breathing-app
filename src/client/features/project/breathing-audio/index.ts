@@ -10,12 +10,15 @@ export {
     playVoiceCue,
     playStartingCue,
     playMeditation,
+    playMeditationEnd,
     preloadSampleForStyle,
     preloadVoiceSamples,
     preloadStartingCue,
     preloadMeditation,
+    preloadMeditationEnd,
     getStartingCueDuration,
     getMeditationDuration,
+    getMeditationEndDuration,
 } from './player';
 export { getSampleStatus, stopAllSamples, VOICE_SAMPLE_IDS } from './samples';
 export type { SampleId } from './samples';
