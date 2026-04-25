@@ -67,7 +67,16 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
             const result = advance(current, delta);
             let nextState = result.state;
 
-            if (result.phaseChanged) {
+            const targetMs = sessionTargetMs(exercise);
+            const targetCycles = sessionTargetCycles(exercise);
+            const reachedTime = targetMs !== null && nextState.totalElapsedMs >= targetMs;
+            const reachedCycles = targetCycles !== null && nextState.cycle >= targetCycles;
+            const sessionDone = reachedTime || reachedCycles;
+
+            // Skip the phase cue when this same tick also ends the session —
+            // otherwise the next cycle's first cue (e.g. "inhale") fires at the
+            // exact moment the wrap-up audio starts.
+            if (result.phaseChanged && !sessionDone) {
                 const audio = useAudioSettingsStore.getState();
                 if (audio.enabled && audio.cues[nextState.phase]) {
                     if (audio.voice) {
@@ -78,11 +87,7 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
                 }
             }
 
-            const targetMs = sessionTargetMs(exercise);
-            const targetCycles = sessionTargetCycles(exercise);
-            const reachedTime = targetMs !== null && nextState.totalElapsedMs >= targetMs;
-            const reachedCycles = targetCycles !== null && nextState.cycle >= targetCycles;
-            if (reachedTime || reachedCycles) {
+            if (sessionDone) {
                 nextState = complete(nextState);
             }
 
