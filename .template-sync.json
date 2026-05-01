@@ -2,8 +2,8 @@
   "templateRepo": "git@github.com:gileck/app-template-ai.git",
   "templateBranch": "main",
   "templateLocalPath": "../app-template-ai",
-  "lastSyncCommit": "1dfba1a20a7dc11cf29e806d863b28aabb313efb",
-  "lastSyncDate": "2026-04-19T07:30:33.932Z",
+  "lastSyncCommit": "d50eb40fffa6735af96dbebfaeac2fa43795d17b",
+  "lastSyncDate": "2026-04-29T09:26:41.131Z",
   "projectOverrides": [
     "src/config/pwa.config.ts"
   ]
