@@ -22,6 +22,7 @@ import { Dashboard } from './project/Dashboard';
 import { Debug } from './project/Debug';
 import { Library } from './project/Library';
 import { ExerciseEditor } from './project/ExerciseEditor';
+import { PatternCalibration } from './project/PatternCalibration';
 import { Session } from './project/Session';
 import { AudioSettings } from './project/AudioSettings';
 
@@ -33,6 +34,7 @@ export const projectRoutes: Routes = {
   // Breathing app
   '/': Library,
   '/exercise/new': ExerciseEditor,
+  '/exercise/measure': PatternCalibration,
   '/exercise/:id': ExerciseEditor,
   '/session/:id': { component: Session, fullScreen: true },
   '/audio': AudioSettings,

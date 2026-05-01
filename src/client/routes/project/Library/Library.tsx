@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Plus, Volume2 } from 'lucide-react';
+import { Plus, Timer, Volume2 } from 'lucide-react';
 import { Button } from '@/client/components/template/ui/button';
 import { useRouter } from '@/client/features';
 import {
@@ -57,6 +57,16 @@ export function Library() {
                         className="h-11 w-11 rounded-full"
                     >
                         <Volume2 className="h-5 w-5" aria-hidden />
+                    </Button>
+                    <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        onClick={() => navigate('/exercise/measure')}
+                        aria-label="Measure pattern"
+                        className="h-11 w-11 rounded-full"
+                    >
+                        <Timer className="h-5 w-5" aria-hidden />
                     </Button>
                     <Button
                         type="button"
