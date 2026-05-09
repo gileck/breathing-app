@@ -6,7 +6,6 @@ import {
     nudgeActivePhase,
     pause,
     queuePace,
-    queuePattern,
     resume,
     start,
     type EngineState,
@@ -25,7 +24,6 @@ export type EngineHandle = {
     togglePause: () => void;
     stop: () => void;
     setPendingPace: (pace: number) => void;
-    setPendingPattern: (pattern: import('@/client/features/project/exercises').Pattern) => void;
     nudgePhase: (delta: number) => void;
     isComplete: boolean;
     isIdle: boolean;
@@ -41,10 +39,7 @@ const sessionTargetCycles = (exercise: Exercise): number | null => {
     return null;
 };
 
-export function useBreathSession(
-    exercise: Exercise,
-    options?: { cyclesOverride?: number | null },
-): EngineHandle {
+export function useBreathSession(exercise: Exercise): EngineHandle {
     // eslint-disable-next-line state-management/prefer-state-architecture -- per-session engine state is ephemeral to this route instance
     const [state, setState] = useState<EngineState>(() =>
         // Pace is a runtime-only knob — sessions always start at 1× and the
@@ -56,11 +51,6 @@ export function useBreathSession(
 
     const rafRef = useRef<number | null>(null);
     const lastTickRef = useRef<number | null>(null);
-
-    // Track the latest cycles override in a ref so the rAF loop sees fresh
-    // values without having to re-subscribe / restart the loop on every tick.
-    const cyclesOverrideRef = useRef<number | null | undefined>(options?.cyclesOverride);
-    cyclesOverrideRef.current = options?.cyclesOverride;
 
     // rAF only spins while the engine is actively advancing. While idle
     // (pre-session meditation + countdown) or paused / complete we let the
@@ -78,12 +68,7 @@ export function useBreathSession(
             let nextState = result.state;
 
             const targetMs = sessionTargetMs(exercise);
-            const baseCycles = sessionTargetCycles(exercise);
-            const override = cyclesOverrideRef.current;
-            // The override (when provided) wins over the exercise's persisted
-            // cycles target so the user can extend or shorten the session at
-            // runtime without mutating the saved exercise.
-            const targetCycles = override !== undefined && override !== null ? override : baseCycles;
+            const targetCycles = sessionTargetCycles(exercise);
             const reachedTime = targetMs !== null && nextState.totalElapsedMs >= targetMs;
             const reachedCycles = targetCycles !== null && nextState.cycle >= targetCycles;
             const sessionDone = reachedTime || reachedCycles;
@@ -153,13 +138,6 @@ export function useBreathSession(
         setState((prev) => queuePace(prev, pace));
     }, []);
 
-    const setPendingPattern = useCallback(
-        (pattern: import('@/client/features/project/exercises').Pattern) => {
-            setState((prev) => queuePattern(prev, pattern));
-        },
-        [],
-    );
-
     const nudgePhase = useCallback((delta: number) => {
         setState((prev) => nudgeActivePhase(prev, delta));
     }, []);
@@ -170,7 +148,6 @@ export function useBreathSession(
         togglePause,
         stop,
         setPendingPace,
-        setPendingPattern,
         nudgePhase,
         isComplete: state.status === 'complete',
         isIdle: state.status === 'idle',

@@ -1,17 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-    X,
-    Pause,
-    Play,
-    Volume2,
-    VolumeX,
-    Music,
-    Music2,
-    Pencil,
-    Check,
-    Minus,
-    Plus,
-} from 'lucide-react';
+import { X, Pause, Play, Volume2, VolumeX } from 'lucide-react';
 import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
@@ -20,10 +8,6 @@ import {
     breathsPerMinute,
     estimatedDurationSeconds,
     totalSeconds,
-    clampPhaseValue,
-    PHASES,
-    type Phase,
-    type Pattern,
 } from '@/client/features/project/exercises';
 import {
     phaseCountdownSeconds,
@@ -48,10 +32,7 @@ import {
     stopAllSamples,
     useAudioSettingsStore,
 } from '@/client/features/project/breathing-audio';
-import {
-    useBackgroundMusicRuntimeStore,
-    useBackgroundMusicStore,
-} from '@/client/features/project/background-music';
+import { useBackgroundMusicRuntimeStore } from '@/client/features/project/background-music';
 import { BreathOrb } from './components/BreathOrb';
 import { PhaseChips } from './components/PhaseChips';
 import { TempoButtons } from './components/TempoButtons';
@@ -62,13 +43,6 @@ const PHASE_LABELS = {
     inhale: 'Breathe in',
     holdIn: 'Hold',
     exhale: 'Breathe out',
-    holdOut: 'Rest',
-} as const;
-
-const PHASE_SHORT = {
-    inhale: 'In',
-    holdIn: 'Hold',
-    exhale: 'Out',
     holdOut: 'Rest',
 } as const;
 
@@ -106,33 +80,15 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const exercise = useExercisesStore(selectExerciseById(exerciseId));
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral UI toggle tied to this session instance
     const [showNudge, setShowNudge] = useState(false);
-    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral edit-mode toggle for inline pattern editing
-    const [editingPattern, setEditingPattern] = useState(false);
 
     // exercise is guaranteed non-null here (checked in parent) but TS doesn't know.
     const safeExercise = exercise!;
-
-    // Initial cycle target derived from the exercise; the user can adjust at
-    // runtime with +/-. Open-ended sessions remain open (override stays null).
-    const initialTargetCycles = (() => {
-        if (safeExercise.length.kind === 'cycles') return safeExercise.length.value;
-        if (safeExercise.length.kind === 'minutes') {
-            const cycleSec = totalSeconds(safeExercise.pattern);
-            if (cycleSec <= 0) return null;
-            return Math.max(1, Math.round((safeExercise.length.value * 60) / cycleSec));
-        }
-        return null;
-    })();
-    // eslint-disable-next-line state-management/prefer-state-architecture -- runtime-only cycle override, never persisted
-    const [cyclesOverride, setCyclesOverride] = useState<number | null>(initialTargetCycles);
-
-    const engine = useBreathSession(safeExercise, { cyclesOverride });
+    const engine = useBreathSession(safeExercise);
     const {
         state,
         beginSession,
         togglePause,
         setPendingPace,
-        setPendingPattern,
         nudgePhase,
         isComplete,
         isIdle,
@@ -141,8 +97,6 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const audioEnabled = useAudioSettingsStore((s) => s.enabled);
     const toggleAudio = useAudioSettingsStore((s) => s.toggleEnabled);
     const setBgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.setShouldPlay);
-    const bgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.shouldPlay);
-    const bgMusicEnabled = useBackgroundMusicStore((s) => s.enabled);
 
     // 3 → 2 → 1, advances through timers bound to the audio cue's real duration.
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral pre-session countdown driven by setTimeout
@@ -276,41 +230,17 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const effectivePattern = state.pendingPattern ?? state.pattern;
     const effectivePace = state.pendingPace ?? state.pace;
     const pending = hasPendingChanges(state);
-    // The CYCLE readout tracks the runtime override (which the user can
-    // bump up / down with +/- buttons). When the exercise is open-ended the
-    // override stays null and only the elapsed cycle count is shown.
-    const targetCycles = cyclesOverride;
-    const incrementCycles = () => {
-        setCyclesOverride((prev) => {
-            const base = prev ?? state.cycle + 1;
-            return Math.min(999, base + 1);
-        });
-    };
-    const decrementCycles = () => {
-        setCyclesOverride((prev) => {
-            if (prev === null) return null;
-            // Don't let the user shrink below the cycle they're on, otherwise
-            // the rAF loop would immediately end the session.
-            return Math.max(state.cycle + 1, prev - 1);
-        });
-    };
-
-    // Pattern edit applies via the engine's pendingPattern queue, which gets
-    // picked up at the next cycle boundary — same path the in-session phase
-    // nudge already uses.
-    const effectivePatternForEdit = state.pendingPattern ?? state.pattern;
-    const adjustPhase = (phase: Phase, delta: number) => {
-        const next: Pattern = {
-            ...effectivePatternForEdit,
-            [phase]: clampPhaseValue(effectivePatternForEdit[phase] + delta),
-        };
-        setPendingPattern(next);
-    };
-
-    const toggleBgMusic = () => {
-        if (!bgMusicEnabled) return;
-        setBgShouldPlay(!bgShouldPlay);
-    };
+    // Derive a target cycle count even for minutes-based (legacy) lengths so
+    // the CYCLE readout always shows progress / total.
+    const targetCycles = (() => {
+        if (safeExercise.length.kind === 'cycles') return safeExercise.length.value;
+        if (safeExercise.length.kind === 'minutes') {
+            const cycleSec = totalSeconds(safeExercise.pattern);
+            if (cycleSec <= 0) return null;
+            return Math.max(1, Math.round((safeExercise.length.value * 60) / cycleSec));
+        }
+        return null;
+    })();
 
     if (showEndMeditation) {
         return (
@@ -418,44 +348,19 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
                                     Cycle
                                 </span>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="font-mono tabular-nums text-base">
-                                        {targetCycles !== null ? (
-                                            <>
-                                                ({state.cycle + 1}
-                                                <span className="text-muted-foreground">
-                                                    /{targetCycles}
-                                                </span>
-                                                )
-                                            </>
-                                        ) : (
-                                            state.cycle + 1
-                                        )}
-                                    </span>
-                                    {targetCycles !== null && (
-                                        <div className="flex items-center gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={decrementCycles}
-                                                aria-label="Decrease cycles"
-                                                disabled={
-                                                    targetCycles <= state.cycle + 1
-                                                }
-                                                className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10 disabled:opacity-30"
-                                            >
-                                                <Minus className="h-3 w-3" aria-hidden />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={incrementCycles}
-                                                aria-label="Increase cycles"
-                                                className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
-                                            >
-                                                <Plus className="h-3 w-3" aria-hidden />
-                                            </button>
-                                        </div>
+                                <span className="font-mono tabular-nums text-base">
+                                    {targetCycles !== null ? (
+                                        <>
+                                            ({state.cycle + 1}
+                                            <span className="text-muted-foreground">
+                                                /{targetCycles}
+                                            </span>
+                                            )
+                                        </>
+                                    ) : (
+                                        state.cycle + 1
                                     )}
-                                </div>
+                                </span>
                             </div>
                             <div className="flex flex-col">
                                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -474,21 +379,6 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                     );
                 })()}
                 <div className="flex items-center gap-2">
-                    {bgMusicEnabled && (
-                        <button
-                            type="button"
-                            onClick={toggleBgMusic}
-                            aria-label={bgShouldPlay ? 'Pause background music' : 'Play background music'}
-                            aria-pressed={bgShouldPlay}
-                            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
-                        >
-                            {bgShouldPlay ? (
-                                <Music className="h-5 w-5" aria-hidden />
-                            ) : (
-                                <Music2 className="h-5 w-5 opacity-50" aria-hidden />
-                            )}
-                        </button>
-                    )}
                     <button
                         type="button"
                         onClick={toggleAudio}
@@ -513,66 +403,14 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                 </div>
             </div>
 
-            <div className="absolute inset-x-0 top-[148px] flex flex-col items-center gap-1.5">
-                <div className="pointer-events-auto flex items-center gap-2">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary/80">
-                        {patternString(effectivePatternForEdit, ' · ')}
-                    </span>
-                    <button
-                        type="button"
-                        onClick={() => setEditingPattern((v) => !v)}
-                        aria-label={editingPattern ? 'Done editing pattern' : 'Edit pattern'}
-                        aria-pressed={editingPattern}
-                        className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10"
-                    >
-                        {editingPattern ? (
-                            <Check className="h-3 w-3" aria-hidden />
-                        ) : (
-                            <Pencil className="h-3 w-3" aria-hidden />
-                        )}
-                    </button>
-                </div>
-                <span className="pointer-events-none text-2xl font-light tracking-tight">
+            <div className="pointer-events-none absolute inset-x-0 top-[148px] flex flex-col items-center gap-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary/80">
+                    {patternString(safeExercise.pattern, ' · ')}
+                </span>
+                <span className="text-2xl font-light tracking-tight">
                     {PHASE_LABELS[state.phase]}
                     {(state.phase === 'inhale' || state.phase === 'exhale') && '…'}
                 </span>
-                {editingPattern && (
-                    <div className="pointer-events-auto mt-2 flex gap-1.5">
-                        {PHASES.map((phase) => (
-                            <div
-                                key={phase}
-                                className="flex flex-col items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5"
-                            >
-                                <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-muted-foreground">
-                                    {PHASE_SHORT[phase]}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustPhase(phase, -1)}
-                                        aria-label={`Decrease ${phase}`}
-                                        disabled={effectivePatternForEdit[phase] <= 0}
-                                        className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10 disabled:opacity-30"
-                                    >
-                                        <Minus className="h-3 w-3" aria-hidden />
-                                    </button>
-                                    <span className="min-w-[1.25rem] text-center font-mono tabular-nums text-sm">
-                                        {effectivePatternForEdit[phase]}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => adjustPhase(phase, 1)}
-                                        aria-label={`Increase ${phase}`}
-                                        disabled={effectivePatternForEdit[phase] >= 30}
-                                        className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10 disabled:opacity-30"
-                                    >
-                                        <Plus className="h-3 w-3" aria-hidden />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
             </div>
 
             <div className="flex flex-1 items-center justify-center">
