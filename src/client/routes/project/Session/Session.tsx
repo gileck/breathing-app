@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { X, Pause, Play, Volume2, VolumeX, ChevronUp } from 'lucide-react';
 import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
@@ -8,6 +8,9 @@ import {
     breathsPerMinute,
     estimatedDurationSeconds,
     totalSeconds,
+    clampPhaseValue,
+    type Phase,
+    type Pattern,
 } from '@/client/features/project/exercises';
 import {
     phaseCountdownSeconds,
@@ -32,7 +35,11 @@ import {
     stopAllSamples,
     useAudioSettingsStore,
 } from '@/client/features/project/breathing-audio';
-import { useBackgroundMusicRuntimeStore } from '@/client/features/project/background-music';
+import {
+    useBackgroundMusicRuntimeStore,
+    useBackgroundMusicStore,
+} from '@/client/features/project/background-music';
+import { AdjustPanel } from './components/AdjustPanel';
 import { BreathOrb } from './components/BreathOrb';
 import { PhaseChips } from './components/PhaseChips';
 import { TempoButtons } from './components/TempoButtons';
@@ -80,15 +87,33 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const exercise = useExercisesStore(selectExerciseById(exerciseId));
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral UI toggle tied to this session instance
     const [showNudge, setShowNudge] = useState(false);
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral open/close flag for the runtime adjust panel
+    const [adjustOpen, setAdjustOpen] = useState(false);
 
     // exercise is guaranteed non-null here (checked in parent) but TS doesn't know.
     const safeExercise = exercise!;
-    const engine = useBreathSession(safeExercise);
+
+    // Initial cycle target derived from the exercise; the user can adjust at
+    // runtime with +/-. Open-ended sessions remain open (override stays null).
+    const initialTargetCycles = (() => {
+        if (safeExercise.length.kind === 'cycles') return safeExercise.length.value;
+        if (safeExercise.length.kind === 'minutes') {
+            const cycleSec = totalSeconds(safeExercise.pattern);
+            if (cycleSec <= 0) return null;
+            return Math.max(1, Math.round((safeExercise.length.value * 60) / cycleSec));
+        }
+        return null;
+    })();
+    // eslint-disable-next-line state-management/prefer-state-architecture -- runtime-only cycle override, never persisted
+    const [cyclesOverride, setCyclesOverride] = useState<number | null>(initialTargetCycles);
+
+    const engine = useBreathSession(safeExercise, { cyclesOverride });
     const {
         state,
         beginSession,
         togglePause,
         setPendingPace,
+        setPendingPattern,
         nudgePhase,
         isComplete,
         isIdle,
@@ -97,6 +122,8 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const audioEnabled = useAudioSettingsStore((s) => s.enabled);
     const toggleAudio = useAudioSettingsStore((s) => s.toggleEnabled);
     const setBgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.setShouldPlay);
+    const bgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.shouldPlay);
+    const bgMusicEnabled = useBackgroundMusicStore((s) => s.enabled);
 
     // 3 → 2 → 1, advances through timers bound to the audio cue's real duration.
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral pre-session countdown driven by setTimeout
@@ -230,17 +257,41 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const effectivePattern = state.pendingPattern ?? state.pattern;
     const effectivePace = state.pendingPace ?? state.pace;
     const pending = hasPendingChanges(state);
-    // Derive a target cycle count even for minutes-based (legacy) lengths so
-    // the CYCLE readout always shows progress / total.
-    const targetCycles = (() => {
-        if (safeExercise.length.kind === 'cycles') return safeExercise.length.value;
-        if (safeExercise.length.kind === 'minutes') {
-            const cycleSec = totalSeconds(safeExercise.pattern);
-            if (cycleSec <= 0) return null;
-            return Math.max(1, Math.round((safeExercise.length.value * 60) / cycleSec));
-        }
-        return null;
-    })();
+    // The CYCLE readout tracks the runtime override (which the user can
+    // bump up / down with +/- buttons). When the exercise is open-ended the
+    // override stays null and only the elapsed cycle count is shown.
+    const targetCycles = cyclesOverride;
+    const incrementCycles = () => {
+        setCyclesOverride((prev) => {
+            const base = prev ?? state.cycle + 1;
+            return Math.min(999, base + 1);
+        });
+    };
+    const decrementCycles = () => {
+        setCyclesOverride((prev) => {
+            if (prev === null) return null;
+            // Don't let the user shrink below the cycle they're on, otherwise
+            // the rAF loop would immediately end the session.
+            return Math.max(state.cycle + 1, prev - 1);
+        });
+    };
+
+    // Pattern edit applies via the engine's pendingPattern queue, which gets
+    // picked up at the next cycle boundary — same path the in-session phase
+    // nudge already uses.
+    const effectivePatternForEdit = state.pendingPattern ?? state.pattern;
+    const adjustPhase = (phase: Phase, delta: number) => {
+        const next: Pattern = {
+            ...effectivePatternForEdit,
+            [phase]: clampPhaseValue(effectivePatternForEdit[phase] + delta),
+        };
+        setPendingPattern(next);
+    };
+
+    const toggleBgMusic = () => {
+        if (!bgMusicEnabled) return;
+        setBgShouldPlay(!bgShouldPlay);
+    };
 
     if (showEndMeditation) {
         return (
@@ -405,7 +456,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
 
             <div className="pointer-events-none absolute inset-x-0 top-[148px] flex flex-col items-center gap-1.5">
                 <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-primary/80">
-                    {patternString(safeExercise.pattern, ' · ')}
+                    {patternString(effectivePatternForEdit, ' · ')}
                 </span>
                 <span className="text-2xl font-light tracking-tight">
                     {PHASE_LABELS[state.phase]}
@@ -472,8 +523,32 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                     ]}
                 />
 
-                <div className="h-11 w-11" aria-hidden />
+                <button
+                    type="button"
+                    onClick={() => setAdjustOpen(true)}
+                    aria-label="Adjust session"
+                    aria-expanded={adjustOpen}
+                    className="inline-flex h-11 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/85 hover:bg-white/10"
+                >
+                    <ChevronUp className="h-3 w-3 text-primary/80" aria-hidden />
+                    Adjust
+                </button>
             </div>
+
+            <AdjustPanel
+                open={adjustOpen}
+                onClose={() => setAdjustOpen(false)}
+                pattern={effectivePattern}
+                hasPending={pending}
+                onAdjustPhase={adjustPhase}
+                targetCycles={targetCycles}
+                currentCycle={state.cycle}
+                onIncrementCycles={incrementCycles}
+                onDecrementCycles={decrementCycles}
+                bgMusicEnabled={bgMusicEnabled}
+                bgShouldPlay={bgShouldPlay}
+                onToggleBgMusic={toggleBgMusic}
+            />
         </div>
     );
 }
