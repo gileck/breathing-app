@@ -6,18 +6,19 @@ import {
     nudgeActivePhase,
     pause,
     queuePace,
+    queuePattern,
     resume,
     start,
     type EngineState,
 } from '@/client/features/project/breath-engine';
-import type { Exercise } from '@/client/features/project/exercises';
+import type { Exercise, Pattern } from '@/client/features/project/exercises';
 import {
     playPhaseCue,
     playVoiceCue,
     setMasterVolume,
     useAudioSettingsStore,
 } from '@/client/features/project/breathing-audio';
-import { useEndlessSessionStore } from './store';
+import { useEndlessSessionStore, useSessionOverridesStore } from './store';
 
 export type EngineHandle = {
     state: EngineState;
@@ -25,6 +26,7 @@ export type EngineHandle = {
     togglePause: () => void;
     stop: () => void;
     setPendingPace: (pace: number) => void;
+    setPendingPattern: (pattern: Pattern) => void;
     nudgePhase: (delta: number) => void;
     isComplete: boolean;
     isIdle: boolean;
@@ -69,9 +71,16 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
             let nextState = result.state;
 
             const endless = useEndlessSessionStore.getState().enabled;
+            const cyclesOverride =
+                useSessionOverridesStore.getState().targetCyclesOverride;
             const targetMs = sessionTargetMs(exercise);
-            const targetCycles = sessionTargetCycles(exercise);
-            const reachedTime = targetMs !== null && nextState.totalElapsedMs >= targetMs;
+            // Per-session override (from the in-exercise config dialog) wins
+            // over the exercise's saved length so the underlying exercise is
+            // never mutated.
+            const targetCycles =
+                cyclesOverride !== null ? cyclesOverride : sessionTargetCycles(exercise);
+            const reachedTime =
+                cyclesOverride === null && targetMs !== null && nextState.totalElapsedMs >= targetMs;
             const reachedCycles = targetCycles !== null && nextState.cycle >= targetCycles;
             // Endless mode keeps the breath cycling indefinitely — the user
             // ends the session manually with the close button.
@@ -142,6 +151,10 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
         setState((prev) => queuePace(prev, pace));
     }, []);
 
+    const setPendingPattern = useCallback((pattern: Pattern) => {
+        setState((prev) => queuePattern(prev, pattern));
+    }, []);
+
     const nudgePhase = useCallback((delta: number) => {
         setState((prev) => nudgeActivePhase(prev, delta));
     }, []);
@@ -152,6 +165,7 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
         togglePause,
         stop,
         setPendingPace,
+        setPendingPattern,
         nudgePhase,
         isComplete: state.status === 'complete',
         isIdle: state.status === 'idle',

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, Volume2, VolumeX, Infinity as InfinityIcon } from 'lucide-react';
+import { X, Pause, Play, Volume2, VolumeX, Settings as SettingsIcon } from 'lucide-react';
 import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
@@ -37,8 +37,9 @@ import { BreathOrb } from './components/BreathOrb';
 import { PhaseChips } from './components/PhaseChips';
 import { TempoButtons } from './components/TempoButtons';
 import { SessionStats } from './components/SessionStats';
+import { SessionConfigDialog } from './components/SessionConfigDialog';
 import { useBreathSession, formatElapsed } from './hooks';
-import { useEndlessSessionStore } from './store';
+import { useEndlessSessionStore, useSessionOverridesStore } from './store';
 
 const PHASE_LABELS = {
     inhale: 'Breathe in',
@@ -90,6 +91,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
         beginSession,
         togglePause,
         setPendingPace,
+        setPendingPattern,
         nudgePhase,
         isComplete,
         isIdle,
@@ -100,6 +102,11 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const setBgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.setShouldPlay);
     const endlessEnabled = useEndlessSessionStore((s) => s.enabled);
     const toggleEndless = useEndlessSessionStore((s) => s.toggleEnabled);
+    const cyclesOverride = useSessionOverridesStore((s) => s.targetCyclesOverride);
+    const setCyclesOverride = useSessionOverridesStore((s) => s.setTargetCyclesOverride);
+    const resetOverrides = useSessionOverridesStore((s) => s.reset);
+    // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral dialog open flag
+    const [configOpen, setConfigOpen] = useState(false);
 
     // 3 → 2 → 1, advances through timers bound to the audio cue's real duration.
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral pre-session countdown driven by setTimeout
@@ -119,6 +126,13 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
         setBgShouldPlay(true);
         return () => setBgShouldPlay(false);
     }, [setBgShouldPlay]);
+
+    // Per-session overrides are ephemeral — clear them whenever a new
+    // session mounts so the previous run's tweaks don't leak in.
+    useEffect(() => {
+        resetOverrides();
+        return () => resetOverrides();
+    }, [exerciseId, resetOverrides]);
 
     // Cut off any in-flight sample playback (long meditation/starting cues
     // most importantly) when the user bails out of the session.
@@ -234,8 +248,10 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const effectivePace = state.pendingPace ?? state.pace;
     const pending = hasPendingChanges(state);
     // Derive a target cycle count even for minutes-based (legacy) lengths so
-    // the CYCLE readout always shows progress / total.
+    // the CYCLE readout always shows progress / total. A per-session override
+    // (from the config dialog) takes precedence over the saved exercise.
     const targetCycles = (() => {
+        if (cyclesOverride !== null) return cyclesOverride;
         if (safeExercise.length.kind === 'cycles') return safeExercise.length.value;
         if (safeExercise.length.kind === 'minutes') {
             const cycleSec = totalSeconds(safeExercise.pattern);
@@ -244,6 +260,21 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
         }
         return null;
     })();
+    // Initial cycle value shown in the config dialog: the override (if set)
+    // or the natural target. Falls back to a sensible default if neither.
+    const dialogCycles = cyclesOverride ?? targetCycles ?? 10;
+    // Whether either the cycle count or the pattern currently differs from
+    // the saved exercise — drives the dialog's Reset button enabled state.
+    const patternMatchesSaved =
+        effectivePattern.inhale === safeExercise.pattern.inhale &&
+        effectivePattern.holdIn === safeExercise.pattern.holdIn &&
+        effectivePattern.exhale === safeExercise.pattern.exhale &&
+        effectivePattern.holdOut === safeExercise.pattern.holdOut;
+    const canResetSession = cyclesOverride !== null || !patternMatchesSaved;
+    const handleResetSession = () => {
+        setCyclesOverride(null);
+        setPendingPattern(safeExercise.pattern);
+    };
 
     if (showEndMeditation) {
         return (
@@ -371,11 +402,14 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                                 </span>
                                 <span className="font-mono tabular-nums text-base">
                                     {formatElapsed(state.totalElapsedMs)}
-                                    {!endlessEnabled && totalSec !== null && totalSec > 0 && (
-                                        <span className="text-muted-foreground">
-                                            /{totalClock(totalSec)}
-                                        </span>
-                                    )}
+                                    {!endlessEnabled &&
+                                        cyclesOverride === null &&
+                                        totalSec !== null &&
+                                        totalSec > 0 && (
+                                            <span className="text-muted-foreground">
+                                                /{totalClock(totalSec)}
+                                            </span>
+                                        )}
                                 </span>
                             </div>
                         </div>
@@ -384,17 +418,14 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={toggleEndless}
-                        aria-label={
-                            endlessEnabled ? 'Disable endless mode' : 'Enable endless mode'
-                        }
-                        aria-pressed={endlessEnabled}
+                        onClick={() => setConfigOpen(true)}
+                        aria-label="Session settings"
                         className={`flex h-11 w-11 items-center justify-center rounded-full border ${endlessEnabled
                             ? 'border-primary/60 bg-primary/20 text-primary'
                             : 'border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10'
                             }`}
                     >
-                        <InfinityIcon className="h-5 w-5" aria-hidden />
+                        <SettingsIcon className="h-5 w-5" aria-hidden />
                     </button>
                     <button
                         type="button"
@@ -491,6 +522,21 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
 
                 <div className="h-11 w-11" aria-hidden />
             </div>
+
+            <SessionConfigDialog
+                open={configOpen}
+                onOpenChange={setConfigOpen}
+                cycles={dialogCycles}
+                onCyclesChange={setCyclesOverride}
+                cyclesDisabled={endlessEnabled}
+                cyclesDisabledHint={endlessEnabled ? 'Endless on' : undefined}
+                pattern={effectivePattern}
+                onPatternChange={setPendingPattern}
+                endlessEnabled={endlessEnabled}
+                onEndlessToggle={toggleEndless}
+                onReset={handleResetSession}
+                canReset={canResetSession}
+            />
         </div>
     );
 }
