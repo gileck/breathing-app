@@ -17,6 +17,7 @@ import {
     setMasterVolume,
     useAudioSettingsStore,
 } from '@/client/features/project/breathing-audio';
+import { useEndlessSessionStore } from './store';
 
 export type EngineHandle = {
     state: EngineState;
@@ -67,11 +68,14 @@ export function useBreathSession(exercise: Exercise): EngineHandle {
             const result = advance(current, delta);
             let nextState = result.state;
 
+            const endless = useEndlessSessionStore.getState().enabled;
             const targetMs = sessionTargetMs(exercise);
             const targetCycles = sessionTargetCycles(exercise);
             const reachedTime = targetMs !== null && nextState.totalElapsedMs >= targetMs;
             const reachedCycles = targetCycles !== null && nextState.cycle >= targetCycles;
-            const sessionDone = reachedTime || reachedCycles;
+            // Endless mode keeps the breath cycling indefinitely — the user
+            // ends the session manually with the close button.
+            const sessionDone = !endless && (reachedTime || reachedCycles);
 
             // Skip the phase cue when this same tick also ends the session —
             // otherwise the next cycle's first cue (e.g. "inhale") fires at the

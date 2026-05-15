@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Pause, Play, Volume2, VolumeX } from 'lucide-react';
+import { X, Pause, Play, Volume2, VolumeX, Infinity as InfinityIcon } from 'lucide-react';
 import { useRouter } from '@/client/features';
 import {
     useExercisesStore,
@@ -38,6 +38,7 @@ import { PhaseChips } from './components/PhaseChips';
 import { TempoButtons } from './components/TempoButtons';
 import { SessionStats } from './components/SessionStats';
 import { useBreathSession, formatElapsed } from './hooks';
+import { useEndlessSessionStore } from './store';
 
 const PHASE_LABELS = {
     inhale: 'Breathe in',
@@ -97,6 +98,8 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
     const audioEnabled = useAudioSettingsStore((s) => s.enabled);
     const toggleAudio = useAudioSettingsStore((s) => s.toggleEnabled);
     const setBgShouldPlay = useBackgroundMusicRuntimeStore((s) => s.setShouldPlay);
+    const endlessEnabled = useEndlessSessionStore((s) => s.enabled);
+    const toggleEndless = useEndlessSessionStore((s) => s.toggleEnabled);
 
     // 3 → 2 → 1, advances through timers bound to the audio cue's real duration.
     // eslint-disable-next-line state-management/prefer-state-architecture -- ephemeral pre-session countdown driven by setTimeout
@@ -349,7 +352,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                                     Cycle
                                 </span>
                                 <span className="font-mono tabular-nums text-base">
-                                    {targetCycles !== null ? (
+                                    {targetCycles !== null && !endlessEnabled ? (
                                         <>
                                             ({state.cycle + 1}
                                             <span className="text-muted-foreground">
@@ -368,7 +371,7 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                                 </span>
                                 <span className="font-mono tabular-nums text-base">
                                     {formatElapsed(state.totalElapsedMs)}
-                                    {totalSec !== null && totalSec > 0 && (
+                                    {!endlessEnabled && totalSec !== null && totalSec > 0 && (
                                         <span className="text-muted-foreground">
                                             /{totalClock(totalSec)}
                                         </span>
@@ -379,6 +382,20 @@ function SessionContent({ exerciseId }: { exerciseId: string }) {
                     );
                 })()}
                 <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={toggleEndless}
+                        aria-label={
+                            endlessEnabled ? 'Disable endless mode' : 'Enable endless mode'
+                        }
+                        aria-pressed={endlessEnabled}
+                        className={`flex h-11 w-11 items-center justify-center rounded-full border ${endlessEnabled
+                            ? 'border-primary/60 bg-primary/20 text-primary'
+                            : 'border-white/10 bg-white/5 text-foreground/70 hover:bg-white/10'
+                            }`}
+                    >
+                        <InfinityIcon className="h-5 w-5" aria-hidden />
+                    </button>
                     <button
                         type="button"
                         onClick={toggleAudio}
